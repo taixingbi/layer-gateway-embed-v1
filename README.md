@@ -1,8 +1,14 @@
 # router-embed
 
-Proxy `/v1/embeddings` and `/v1/models` to vLLM backends (failover or round-robin).
+## run local
+```bash
+python3.11 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
 
-**Docker:**
+## Docker
 ```bash
 # Verify: docker --version && docker compose version
 # Option A: docker compose (auto-restart on Docker/PC restart)

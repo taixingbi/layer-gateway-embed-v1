@@ -7,4 +7,4 @@ RUN pip install --no-cache-dir .
 
 EXPOSE 8011
 ENV ROUTER_PORT=8011
-CMD ["python", "-m", "router_embed.server"]
+CMD ["python", "-m", "router_embed.main"]

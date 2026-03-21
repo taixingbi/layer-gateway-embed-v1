@@ -23,9 +23,9 @@ def configure(**kwargs) -> None:
 def get_backends() -> list[str]:
     raw = _v("backends", "EMBEDDING_BACKENDS", DEFAULT_BACKENDS)
     return [
-        (b if "://" in b else f"http://{b}").rstrip("/")
+        (s if "://" in s else f"http://{s}").rstrip("/")
         for b in raw.split(",")
-        if (b := b.strip())
+        if (s := b.strip())
     ]
 
 

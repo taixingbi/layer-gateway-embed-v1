@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 
 from router_embed.config import DEFAULT_BACKENDS, configure, get_backends, get_max_concurrent
 from router_embed.config import get_port, get_strategy, get_timeout
-from router_embed.server import app
+from router_embed.main import app
 
 
 @pytest.fixture(autouse=True)

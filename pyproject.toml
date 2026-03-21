@@ -24,7 +24,7 @@ dev = [
 ]
 
 [project.scripts]
-router-embed = "router_embed.server:run"
+router-embed = "router_embed.main:run"
 
 [tool.hatch.build.targets.wheel]
 packages = ["router_embed"]

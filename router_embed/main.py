@@ -1,4 +1,12 @@
 """Proxy /v1/embeddings and /v1/models to vLLM."""
+import sys
+from pathlib import Path
+
+# Allow: python router_embed/main.py (from project root)
+_root = Path(__file__).resolve().parent.parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+
 import asyncio
 from contextlib import asynccontextmanager
 
@@ -10,7 +18,7 @@ from router_embed.config import get_backends, get_max_concurrent, get_port, get_
 from router_embed.router import proxy
 
 client: httpx.AsyncClient | None = None
- queue: asyncio.Semaphore | None = None
+queue: asyncio.Semaphore | None = None
 SKIP = frozenset({"host", "content-length"})
 
 
@@ -51,7 +59,7 @@ async def route(request: Request):
 
 def run():
     import uvicorn
-    uvicorn.run("router_embed.server:app", host="0.0.0.0", port=get_port())
+    uvicorn.run("router_embed.main:app", host="0.0.0.0", port=get_port())
 
 
 if __name__ == "__main__":
