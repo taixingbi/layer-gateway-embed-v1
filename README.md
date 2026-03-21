@@ -1,11 +1,17 @@
 # router-embed
 
 ## run local
+
+#### venv
 ```bash
 python3.11 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
+```
+#### run
+```bash
+kill -9 $(lsof -t -i:8011) 
 ```
 
 ## Docker

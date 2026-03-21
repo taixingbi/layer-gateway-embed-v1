@@ -1,10 +1,12 @@
 services:
   router:
+    image: layer-router-embed-v1
     build: .
+    container_name: layer-router-embed-v1
     restart: unless-stopped
     ports:
       - "8011:8011"
     environment:
       # vLLM on same Mac: host.docker.internal:8001
-      # vLLM on LAN: 192.168.86.173:8001,192.168.86.176:8001
-      - EMBEDDING_BACKENDS=host.docker.internal:8001
+      # vLLM on LAN (default):
+      - EMBEDDING_BACKENDS=192.168.86.173:8001,192.168.86.176:8001
