@@ -12,8 +12,9 @@ pip install -e .
 ## Run
 
 ```bash
-cp .env.example .env   # edit EMBEDDING_BACKENDS for your vLLM servers
 source venv/bin/activate
+# Default backends: 192.168.86.173:8001,192.168.86.176:8001
+# Override: EMBEDDING_BACKENDS=localhost:8001 python -m tb_router_embed.main
 python -m tb_router_embed.main
 ```
 
@@ -26,7 +27,7 @@ Configure clients (ingest/retrieve layers): set `EMBEDDING_URL=http://<router-ho
 ```bash
 # From the project directory
 source venv/bin/activate
-cp .env.example .env   # edit EMBEDDING_BACKENDS
+# Set EMBEDDING_BACKENDS if different from default
 nohup python -m tb_router_embed.main &
 ```
 
@@ -72,12 +73,12 @@ curl http://localhost:8011/health
 
 ## Troubleshooting
 
-**"address already in use" (port 8011)** — Another process is using the port. Stop it: `lsof -ti:8011 | xargs kill` (macOS/Linux). Or set `ROUTER_PORT=8012` in `.env` to use a different port.
+**"address already in use" (port 8011)** — Another process is using the port. Stop it: `lsof -ti:8011 | xargs kill` (macOS/Linux). Or set `ROUTER_PORT=8012` to use a different port.
 
-**"All backends unavailable: All connection attempts failed"** — The router could not reach any vLLM backend. Ensure:
+**"All backends unavailable"** — The router could not reach any vLLM backend. Ensure:
 1. vLLM is running on your backend hosts (default: 192.168.86.173:8001, 192.168.86.176:8001)
 2. Your machine can reach those IPs (same network, no firewall blocking)
-3. Or set `EMBEDDING_BACKENDS` in `.env` to your vLLM URLs, e.g. `localhost:8001` if vLLM runs on the same machine
+3. Or set `EMBEDDING_BACKENDS=localhost:8001` if vLLM runs on the same machine
 
 ## Development
 

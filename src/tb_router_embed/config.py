@@ -1,12 +1,8 @@
 """
 Configuration for vLLM embedding router.
-Loads .env if present; values can be overridden by environment variables or configure().
+Uses defaults below; override via environment variables or configure().
 """
 import os
-
-from dotenv import load_dotenv
-
-load_dotenv()
 
 _overrides: dict = {}
 
@@ -31,7 +27,10 @@ def configure(
     client_max_concurrent: int | None = None,
     **kwargs,
 ) -> None:
-    """Set configuration overrides (used before starting the server)."""
+    """Set configuration overrides (used before starting the server).
+    Affects only the process that calls this. For a separate router process,
+    set EMBEDDING_BACKENDS in that process's environment and restart the router.
+    """
     global _overrides
     opts = {
         "backends": backends,
