@@ -1,3 +1,0 @@
-# For PyPI publish: pip install -r requirements-publish.txt
-build>=1.0.0
-twine>=4.0.0
