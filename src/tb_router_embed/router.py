@@ -3,9 +3,7 @@ import itertools
 
 import httpx
 
-from tb_router_embed.config import get_backends, get_strategy
-
-REQUEST_TIMEOUT = 60.0
+from tb_router_embed.config import get_backends, get_request_timeout, get_strategy
 _ROUND_ROBIN_INDEX: itertools.cycle | None = None
 
 
@@ -60,13 +58,15 @@ async def proxy_request(
     last_error: Exception | None = None
     last_response: httpx.Response | None = None
 
+    timeout = get_request_timeout()
     for base_url in candidates:
         url = f"{base_url}{path}"
         try:
             resp = await client.request(
-                method, url, content=content, headers=headers, timeout=REQUEST_TIMEOUT
+                method, url, content=content, headers=headers, timeout=timeout
             )
             if strategy == "failover" and _is_retryable(resp.status_code):
+                await resp.aread()  # Consume body to release connection before retry
                 last_response = resp
                 continue
             return resp, base_url

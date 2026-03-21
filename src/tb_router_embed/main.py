@@ -14,7 +14,12 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
-from tb_router_embed.config import get_backends, get_max_concurrent, get_port
+from tb_router_embed.config import (
+    get_backends,
+    get_max_concurrent,
+    get_port,
+    get_request_timeout,
+)
 from tb_router_embed.router import proxy_request
 
 _http_client: httpx.AsyncClient | None = None
@@ -30,7 +35,7 @@ def _err(code: int, msg: str) -> JSONResponse:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _http_client, _queue
-    _http_client = httpx.AsyncClient(timeout=60.0)
+    _http_client = httpx.AsyncClient(timeout=get_request_timeout())
     _queue = asyncio.Semaphore(get_max_concurrent())
     yield
     await _http_client.aclose()
@@ -70,8 +75,8 @@ async def proxy(request: Request):
                 headers=headers,
             )
         return Response(content=resp.content, status_code=resp.status_code, headers=dict(resp.headers))
-    except (httpx.TimeoutException, httpx.ConnectError) as e:
-        return _err(503, f"All backends unavailable: {e!s}")
+    except (httpx.TimeoutException, httpx.ConnectError):
+        return _err(503, "All backends unavailable")
 
 
 def run():

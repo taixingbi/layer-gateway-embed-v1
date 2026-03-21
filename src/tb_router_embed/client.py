@@ -7,6 +7,7 @@ from tb_router_embed.config import (
     get_client_max_concurrent,
     get_embedding_model,
     get_embedding_url,
+    get_request_timeout,
 )
 
 
@@ -26,7 +27,17 @@ class EmbedClient:
         self._model = model or get_embedding_model()
         self._max_concurrent = max_concurrent if max_concurrent is not None else get_client_max_concurrent()
         self._semaphore = threading.Semaphore(self._max_concurrent)
-        self._client = httpx.Client(timeout=60.0)
+        self._client = httpx.Client(timeout=get_request_timeout())
+
+    def __enter__(self) -> "EmbedClient":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self._client.close()
+
+    def close(self) -> None:
+        """Close the HTTP client and release connections."""
+        self._client.close()
 
     def embed(self, text: str) -> list[float]:
         """Embed single text. Returns vector."""

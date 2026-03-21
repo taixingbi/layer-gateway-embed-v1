@@ -14,6 +14,7 @@ DEFAULT_BACKENDS = "192.168.86.173:8001,192.168.86.176:8001"
 DEFAULT_STRATEGY = "failover"
 DEFAULT_PORT = 8011
 DEFAULT_MAX_CONCURRENT = 20
+DEFAULT_REQUEST_TIMEOUT = 60.0
 DEFAULT_EMBEDDING_URL = "http://localhost:8011"
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
 DEFAULT_CLIENT_MAX_CONCURRENT = 20
@@ -24,6 +25,7 @@ def configure(
     strategy: str | None = None,
     port: int | None = None,
     max_concurrent: int | None = None,
+    request_timeout: float | None = None,
     embedding_url: str | None = None,
     embedding_model: str | None = None,
     client_max_concurrent: int | None = None,
@@ -31,21 +33,18 @@ def configure(
 ) -> None:
     """Set configuration overrides (used before starting the server)."""
     global _overrides
-    if backends is not None:
-        _overrides["backends"] = backends
-    if strategy is not None:
-        _overrides["strategy"] = strategy
-    if port is not None:
-        _overrides["port"] = port
-    if max_concurrent is not None:
-        _overrides["max_concurrent"] = max_concurrent
-    if embedding_url is not None:
-        _overrides["embedding_url"] = embedding_url
-    if embedding_model is not None:
-        _overrides["embedding_model"] = embedding_model
-    if client_max_concurrent is not None:
-        _overrides["client_max_concurrent"] = client_max_concurrent
-    for k, v in kwargs.items():
+    opts = {
+        "backends": backends,
+        "strategy": strategy,
+        "port": port,
+        "max_concurrent": max_concurrent,
+        "request_timeout": request_timeout,
+        "embedding_url": embedding_url,
+        "embedding_model": embedding_model,
+        "client_max_concurrent": client_max_concurrent,
+        **kwargs,
+    }
+    for k, v in opts.items():
         if v is not None:
             _overrides[k] = v
 
@@ -81,6 +80,14 @@ def get_max_concurrent() -> int:
         "ROUTER_MAX_CONCURRENT", str(DEFAULT_MAX_CONCURRENT)
     )
     return int(raw)
+
+
+def get_request_timeout() -> float:
+    """Request timeout in seconds for backend and client calls."""
+    raw = _overrides.get("request_timeout") or os.getenv(
+        "ROUTER_REQUEST_TIMEOUT", str(DEFAULT_REQUEST_TIMEOUT)
+    )
+    return float(raw)
 
 
 def get_embedding_url() -> str:

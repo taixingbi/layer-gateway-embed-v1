@@ -46,6 +46,7 @@ source venv/bin/activate && python -m tb_router_embed.main
 | `ROUTER_STRATEGY` | `failover` | `failover` or `round_robin` |
 | `ROUTER_PORT` | `8011` | Port for the router (do not use 8001) |
 | `ROUTER_MAX_CONCURRENT` | `20` | Max concurrent requests; excess wait in queue |
+| `ROUTER_REQUEST_TIMEOUT` | `60.0` | Request timeout in seconds for backend calls |
 
 ## API
 

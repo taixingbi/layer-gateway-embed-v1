@@ -1,9 +1,18 @@
 """Tests for tb_router_embed."""
 import pytest
 
-from tb_router_embed.config import configure, get_backends, get_client_max_concurrent
-from tb_router_embed.config import get_embedding_model, get_embedding_url, get_max_concurrent
-from tb_router_embed.config import get_port, get_strategy
+from tb_router_embed.config import (
+    DEFAULT_BACKENDS,
+    configure,
+    get_backends,
+    get_client_max_concurrent,
+    get_embedding_model,
+    get_embedding_url,
+    get_max_concurrent,
+    get_port,
+    get_request_timeout,
+    get_strategy,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -14,10 +23,11 @@ def reset_config():
 
 
 def test_get_backends_default():
+    configure(backends=DEFAULT_BACKENDS)
     backends = get_backends()
     assert len(backends) == 2
-    assert "192.168.86.173" in backends[0]
-    assert "192.168.86.176" in backends[1]
+    assert all(b.startswith("http://") for b in backends)
+    assert "8001" in backends[0] and "8001" in backends[1]
 
 
 def test_get_backends_override():
@@ -35,6 +45,10 @@ def test_get_port_default():
 
 def test_get_max_concurrent_default():
     assert get_max_concurrent() == 20
+
+
+def test_get_request_timeout_default():
+    assert get_request_timeout() == 60.0
 
 
 def test_get_embedding_url_default():
@@ -78,3 +92,11 @@ def test_embed_client_embed_batch_empty():
     from tb_router_embed import EmbedClient
     client = EmbedClient(base_url="http://localhost:8011")
     assert client.embed_batch([]) == []
+
+
+def test_embed_client_context_manager():
+    from tb_router_embed import EmbedClient
+
+    configure(embedding_url="http://test:8011")
+    with EmbedClient() as client:
+        assert client._base_url == "http://test:8011"
