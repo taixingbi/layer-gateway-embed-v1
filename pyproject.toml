@@ -3,7 +3,7 @@ requires = ["hatchling>=1.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "tb-router-embed"
+name = "router-embed"
 version = "1.0.1"
 description = "HTTP proxy router for vLLM embedding API with round-robin and failover"
 readme = "README.md"

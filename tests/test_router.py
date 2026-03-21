@@ -1,7 +1,9 @@
 """Tests for router_embed."""
 import pytest
 
-from router_embed.config import configure, get_backends, get_max_concurrent, get_port, get_strategy
+from router_embed.config import configure, get_backends, get_client_max_concurrent
+from router_embed.config import get_embedding_model, get_embedding_url, get_max_concurrent
+from router_embed.config import get_port, get_strategy
 
 
 @pytest.fixture(autouse=True)
@@ -35,6 +37,14 @@ def test_get_max_concurrent_default():
     assert get_max_concurrent() == 20
 
 
+def test_get_embedding_url_default():
+    assert get_embedding_url() == "http://localhost:8011"
+
+
+def test_get_embedding_model_default():
+    assert get_embedding_model() == "BAAI/bge-m3"
+
+
 def test_health_endpoint():
     from fastapi.testclient import TestClient
     from router_embed.main import app
@@ -42,3 +52,29 @@ def test_health_endpoint():
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
+
+
+def test_embed_client_init():
+    from router_embed import EmbedClient
+    configure(embedding_url="http://test:8011", embedding_model="test-model")
+    client = EmbedClient()
+    assert client._base_url == "http://test:8011"
+    assert client._model == "test-model"
+
+
+def test_get_client_max_concurrent_default():
+    assert get_client_max_concurrent() == 20
+
+
+def test_embed_client_init_explicit():
+    from router_embed import EmbedClient
+    client = EmbedClient(base_url="http://custom:9000", model="custom-model", max_concurrent=5)
+    assert client._base_url == "http://custom:9000"
+    assert client._model == "custom-model"
+    assert client._max_concurrent == 5
+
+
+def test_embed_client_embed_batch_empty():
+    from router_embed import EmbedClient
+    client = EmbedClient(base_url="http://localhost:8011")
+    assert client.embed_batch([]) == []
