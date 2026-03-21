@@ -1,0 +1,23 @@
+# Build
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Env (keep .env.example)
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
