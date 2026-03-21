@@ -29,6 +29,19 @@ docker run -d --restart unless-stopped -p 8011:8011 \
   router-embed
 ```
 
+## Push to Docker Hub
+
+**GitHub Actions** (`.github/workflows/docker-push.yml`): on push to `main`, builds and pushes to Docker Hub. Add repo secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`.
+
+**Manual:**
+```bash
+docker login
+docker tag layer-router-embed-v1 taixingbi/layer-router-embed-v1:latest
+docker push taixingbi/layer-router-embed-v1:latest
+```
+
+Pull: `docker pull taixingbi/layer-router-embed-v1:latest`
+
 ## API
 
 ```bash
