@@ -40,7 +40,13 @@ docker tag layer-router-embed-v1 taixingbi/layer-router-embed-v1:latest
 docker push taixingbi/layer-router-embed-v1:latest
 ```
 
-Pull: `docker pull taixingbi/layer-router-embed-v1:latest`
+**Pull and run:**
+```bash
+docker pull taixingbi/layer-router-embed-v1:latest
+docker run -d --restart unless-stopped -p 8011:8011 \
+  -e EMBEDDING_BACKENDS=192.168.86.173:8001,192.168.86.176:8001 \
+  taixingbi/layer-router-embed-v1:latest
+```
 
 ## API
 
