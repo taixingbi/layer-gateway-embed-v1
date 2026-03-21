@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tb-router-embed"
-version = "1.0.7"
+version = "1.0.8"
 description = "HTTP proxy router for vLLM embedding API with round-robin and failover"
 readme = "README.md"
 license = "MIT"
@@ -29,7 +29,7 @@ dev = [
 ]
 
 [project.scripts]
-router-embed = "tb_router_embed.main:run"
+router-embed = "tb_router_embed.server:run"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tb_router_embed"]

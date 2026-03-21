@@ -11,9 +11,6 @@ DEFAULT_STRATEGY = "failover"
 DEFAULT_PORT = 8011
 DEFAULT_MAX_CONCURRENT = 20
 DEFAULT_REQUEST_TIMEOUT = 60.0
-DEFAULT_EMBEDDING_URL = "http://localhost:8011"
-DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
-DEFAULT_CLIENT_MAX_CONCURRENT = 20
 
 
 def configure(
@@ -22,9 +19,6 @@ def configure(
     port: int | None = None,
     max_concurrent: int | None = None,
     request_timeout: float | None = None,
-    embedding_url: str | None = None,
-    embedding_model: str | None = None,
-    client_max_concurrent: int | None = None,
     **kwargs,
 ) -> None:
     """Set configuration overrides (used before starting the server).
@@ -38,9 +32,6 @@ def configure(
         "port": port,
         "max_concurrent": max_concurrent,
         "request_timeout": request_timeout,
-        "embedding_url": embedding_url,
-        "embedding_model": embedding_model,
-        "client_max_concurrent": client_max_concurrent,
         **kwargs,
     }
     for k, v in opts.items():
@@ -82,30 +73,8 @@ def get_max_concurrent() -> int:
 
 
 def get_request_timeout() -> float:
-    """Request timeout in seconds for backend and client calls."""
+    """Request timeout in seconds for backend calls."""
     raw = _overrides.get("request_timeout") or os.getenv(
         "ROUTER_REQUEST_TIMEOUT", str(DEFAULT_REQUEST_TIMEOUT)
     )
     return float(raw)
-
-
-def get_embedding_url() -> str:
-    """URL for SDK client: router or vLLM API (override > env > default)."""
-    return _overrides.get("embedding_url") or os.getenv(
-        "EMBEDDING_URL", DEFAULT_EMBEDDING_URL
-    )
-
-
-def get_embedding_model() -> str:
-    """Embedding model name for SDK (override > env > default)."""
-    return _overrides.get("embedding_model") or os.getenv(
-        "EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL
-    )
-
-
-def get_client_max_concurrent() -> int:
-    """Max concurrent requests from SDK client (override > env > default)."""
-    raw = _overrides.get("client_max_concurrent") or os.getenv(
-        "EMBED_CLIENT_MAX_CONCURRENT", str(DEFAULT_CLIENT_MAX_CONCURRENT)
-    )
-    return int(raw)

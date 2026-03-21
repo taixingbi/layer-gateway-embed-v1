@@ -85,7 +85,7 @@ def run():
 
     port = get_port()
     uvicorn.run(
-        "tb_router_embed.main:app",
+        "tb_router_embed.server:app",
         host="0.0.0.0",
         port=port,
         reload=False,

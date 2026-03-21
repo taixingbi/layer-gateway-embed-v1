@@ -14,13 +14,11 @@ pip install -e .
 ```bash
 source venv/bin/activate
 # Default backends: 192.168.86.173:8001,192.168.86.176:8001
-# Override: EMBEDDING_BACKENDS=localhost:8001 python -m tb_router_embed.main
-python -m tb_router_embed.main
+# Override: EMBEDDING_BACKENDS=localhost:8001 python -m tb_router_embed.server
+python -m tb_router_embed.server
 ```
 
-Or `router-embed` (after activating venv). If `router-embed` isn't found, use `./venv/bin/python -m tb_router_embed.main` with no activation.
-
-Configure clients (ingest/retrieve layers): set `EMBEDDING_URL=http://<router-host>:8011` instead of pointing directly at a vLLM server.
+Or `router-embed` (after activating venv). If `router-embed` isn't found, use `./venv/bin/python -m tb_router_embed.server` with no activation.
 
 ## Deploy (simple)
 
@@ -28,12 +26,12 @@ Configure clients (ingest/retrieve layers): set `EMBEDDING_URL=http://<router-ho
 # From the project directory
 source venv/bin/activate
 # Set EMBEDDING_BACKENDS if different from default
-nohup python -m tb_router_embed.main &
+nohup python -m tb_router_embed.server &
 ```
 
 Or run in foreground (logs to terminal):
 ```bash
-source venv/bin/activate && python -m tb_router_embed.main
+source venv/bin/activate && python -m tb_router_embed.server
 ```
 
 ## Configuration
@@ -41,9 +39,6 @@ source venv/bin/activate && python -m tb_router_embed.main
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `EMBEDDING_BACKENDS` | `192.168.86.173:8001,192.168.86.176:8001` | Comma-separated backend URLs |
-| `EMBEDDING_URL` | `http://localhost:8011` | Router/vLLM URL for SDK client |
-| `EMBEDDING_MODEL` | `BAAI/bge-m3` | Model for SDK client |
-| `EMBED_CLIENT_MAX_CONCURRENT` | `20` | Max concurrent requests from SDK client |
 | `ROUTER_STRATEGY` | `failover` | `failover` or `round_robin` |
 | `ROUTER_PORT` | `8011` | Port for the router (do not use 8001) |
 | `ROUTER_MAX_CONCURRENT` | `20` | Max concurrent requests; excess wait in queue |
