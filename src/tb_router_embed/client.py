@@ -3,7 +3,7 @@ import threading
 
 import httpx
 
-from router_embed.config import (
+from tb_router_embed.config import (
     get_client_max_concurrent,
     get_embedding_model,
     get_embedding_url,

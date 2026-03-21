@@ -14,8 +14,8 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
-from router_embed.config import get_backends, get_max_concurrent, get_port
-from router_embed.router import proxy_request
+from tb_router_embed.config import get_backends, get_max_concurrent, get_port
+from tb_router_embed.router import proxy_request
 
 _http_client: httpx.AsyncClient | None = None
 _queue: asyncio.Semaphore | None = None
@@ -80,7 +80,7 @@ def run():
 
     port = get_port()
     uvicorn.run(
-        "router_embed.main:app",
+        "tb_router_embed.main:app",
         host="0.0.0.0",
         port=port,
         reload=False,

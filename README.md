@@ -11,7 +11,7 @@ pip install tb-router-embed
 ## SDK
 
 ```python
-from router_embed import EmbedClient
+from tb_router_embed import EmbedClient
 
 client = EmbedClient()
 vec = client.embed("hello world")

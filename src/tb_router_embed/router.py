@@ -3,7 +3,7 @@ import itertools
 
 import httpx
 
-from router_embed.config import get_backends, get_strategy
+from tb_router_embed.config import get_backends, get_strategy
 
 REQUEST_TIMEOUT = 60.0
 _ROUND_ROBIN_INDEX: itertools.cycle | None = None

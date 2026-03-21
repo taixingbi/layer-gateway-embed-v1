@@ -1,4 +1,4 @@
-# router-embed — Router & server guide
+# tb-router-embed — Router & server guide
 
 ## Setup
 
@@ -14,10 +14,10 @@ pip install -e .
 ```bash
 cp .env.example .env   # edit EMBEDDING_BACKENDS for your vLLM servers
 source venv/bin/activate
-python -m router_embed.main
+python -m tb_router_embed.main
 ```
 
-Or `router-embed` (after activating venv). If `router-embed` isn't found, use `./venv/bin/python -m router_embed.main` with no activation.
+Or `router-embed` (after activating venv). If `router-embed` isn't found, use `./venv/bin/python -m tb_router_embed.main` with no activation.
 
 Configure clients (ingest/retrieve layers): set `EMBEDDING_URL=http://<router-host>:8011` instead of pointing directly at a vLLM server.
 
@@ -27,12 +27,12 @@ Configure clients (ingest/retrieve layers): set `EMBEDDING_URL=http://<router-ho
 # From the project directory
 source venv/bin/activate
 cp .env.example .env   # edit EMBEDDING_BACKENDS
-nohup python -m router_embed.main &
+nohup python -m tb_router_embed.main &
 ```
 
 Or run in foreground (logs to terminal):
 ```bash
-source venv/bin/activate && python -m router_embed.main
+source venv/bin/activate && python -m tb_router_embed.main
 ```
 
 ## Configuration

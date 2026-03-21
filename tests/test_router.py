@@ -1,14 +1,14 @@
-"""Tests for router_embed."""
+"""Tests for tb_router_embed."""
 import pytest
 
-from router_embed.config import configure, get_backends, get_client_max_concurrent
-from router_embed.config import get_embedding_model, get_embedding_url, get_max_concurrent
-from router_embed.config import get_port, get_strategy
+from tb_router_embed.config import configure, get_backends, get_client_max_concurrent
+from tb_router_embed.config import get_embedding_model, get_embedding_url, get_max_concurrent
+from tb_router_embed.config import get_port, get_strategy
 
 
 @pytest.fixture(autouse=True)
 def reset_config():
-    import router_embed.config as cfg
+    import tb_router_embed.config as cfg
     cfg._overrides.clear()
     yield
 
@@ -47,7 +47,7 @@ def test_get_embedding_model_default():
 
 def test_health_endpoint():
     from fastapi.testclient import TestClient
-    from router_embed.main import app
+    from tb_router_embed.main import app
     client = TestClient(app)
     r = client.get("/health")
     assert r.status_code == 200
@@ -55,7 +55,7 @@ def test_health_endpoint():
 
 
 def test_embed_client_init():
-    from router_embed import EmbedClient
+    from tb_router_embed import EmbedClient
     configure(embedding_url="http://test:8011", embedding_model="test-model")
     client = EmbedClient()
     assert client._base_url == "http://test:8011"
@@ -67,7 +67,7 @@ def test_get_client_max_concurrent_default():
 
 
 def test_embed_client_init_explicit():
-    from router_embed import EmbedClient
+    from tb_router_embed import EmbedClient
     client = EmbedClient(base_url="http://custom:9000", model="custom-model", max_concurrent=5)
     assert client._base_url == "http://custom:9000"
     assert client._model == "custom-model"
@@ -75,6 +75,6 @@ def test_embed_client_init_explicit():
 
 
 def test_embed_client_embed_batch_empty():
-    from router_embed import EmbedClient
+    from tb_router_embed import EmbedClient
     client = EmbedClient(base_url="http://localhost:8011")
     assert client.embed_batch([]) == []
