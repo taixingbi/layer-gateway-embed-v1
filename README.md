@@ -45,8 +45,9 @@ docker push taixingbi/layer-gateway-embed-v1:latest
 
 **Pull and run:**
 ```bash
-docker pull taixingbi/layer-gateway-embed-v1:latest
-docker run -d --restart unless-stopped \
+ssh tb@192.168.86.179
+sudo docker pull taixingbi/layer-gateway-embed-v1:latest
+sudo docker run -d --restart unless-stopped \
   --name gateway-embed \
   -p 8011:8011 \
   -e EMBEDDING_BACKENDS=192.168.86.173:8001,192.168.86.176:8001 \
