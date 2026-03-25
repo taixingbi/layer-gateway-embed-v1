@@ -58,12 +58,19 @@ docker run -d --restart unless-stopped \
 
 ```bash
 # Health
+curl http://localhost:8011/health
 curl http://192.168.86.179:8011/health
 
 # Models
+curl -H "X-Internal-Key: 1234" http://localhost:8011/v1/models
 curl -H "X-Internal-Key: 1234" http://192.168.86.179:8011/v1/models
 
 # Embeddings
+curl -X POST http://localhost:8011/v1/embeddings \
+  -H "X-Internal-Key: 1234" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "BAAI/bge-m3", "input": "hello world"}'
+
 curl -X POST http://192.168.86.179:8011/v1/embeddings \
   -H "X-Internal-Key: 1234" \
   -H "Content-Type: application/json" \

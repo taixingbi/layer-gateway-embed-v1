@@ -28,3 +28,6 @@ router-embed = "app.main:run"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

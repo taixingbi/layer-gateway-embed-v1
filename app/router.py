@@ -6,6 +6,8 @@ import httpx
 
 from .config import get_backends, get_strategy, get_timeout
 
+DEFAULT_RETRY_ATTEMPTS = 1
+
 _rr: Any = None
 _rr_key: tuple[str, ...] | None = None
 
@@ -32,19 +34,27 @@ async def proxy(client: httpx.AsyncClient, method: str, path: str, body: bytes, 
     strategy = get_strategy()
     candidates = backends if strategy == "failover" else [_next_backend()]
     timeout = get_timeout()
+    attempts = DEFAULT_RETRY_ATTEMPTS
     err, last_resp = None, None
 
     for url in candidates:
-        try:
-            r = await client.request(method, f"{url}{path}", content=body, headers=headers, timeout=timeout)
-            if strategy == "failover" and (r.status_code == 408 or r.status_code >= 500):
-                await r.aread()
-                last_resp, err = r, None
-                continue
-            return r
-        except (httpx.TimeoutException, httpx.ConnectError) as e:
-            err = e
-            continue
+        for attempt in range(attempts):
+            try:
+                r = await client.request(
+                    method, f"{url}{path}", content=body, headers=headers, timeout=timeout
+                )
+                if strategy == "failover" and (r.status_code == 408 or r.status_code >= 500):
+                    await r.aread()
+                    last_resp, err = r, None
+                    if attempt < attempts - 1:
+                        continue
+                    break
+                return r
+            except (httpx.TimeoutException, httpx.ConnectError) as e:
+                err = e
+                if attempt < attempts - 1:
+                    continue
+                break
 
     if last_resp:
         return last_resp
