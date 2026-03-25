@@ -47,6 +47,7 @@ docker push taixingbi/layer-gateway-embed-v1:latest
 ```bash
 ssh tb@192.168.86.179
 sudo docker pull taixingbi/layer-gateway-embed-v1:latest
+sudo docker rm -f gateway-embed
 sudo docker run -d --restart unless-stopped \
   --name gateway-embed \
   -p 8011:8011 \
