@@ -1,11 +1,13 @@
 """Proxy to vLLM backends with failover or round-robin."""
 import itertools
+from typing import Any
 
 import httpx
 
-from router_embed.config import get_backends, get_strategy, get_timeout
+from .config import get_backends, get_strategy, get_timeout
 
-_rr: itertools.cycle | None = None
+_rr: Any = None
+_rr_key: tuple[str, ...] | None = None
 
 
 def _next_backend() -> str:
@@ -14,9 +16,11 @@ def _next_backend() -> str:
         raise ValueError("No backends. Set EMBEDDING_BACKENDS.")
     if get_strategy() == "failover":
         return backends[0]
-    global _rr
-    if _rr is None:
+    global _rr, _rr_key
+    key = tuple(backends)
+    if _rr is None or _rr_key != key:
         _rr = itertools.cycle(backends)
+        _rr_key = key
     return next(_rr)
 
 

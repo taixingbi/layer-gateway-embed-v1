@@ -1,12 +1,13 @@
 services:
   router:
-    image: layer-router-embed-v1
+    image: layer-gateway-embed-v1
     build: .
-    container_name: layer-router-embed-v1
+    container_name: layer-gateway-embed-v1
     restart: unless-stopped
     ports:
       - "8011:8011"
     environment:
+      - INTERNAL_API_KEY=1234
       # vLLM on same Mac: host.docker.internal:8001
       # vLLM on LAN (default):
       - EMBEDDING_BACKENDS=192.168.86.173:8001,192.168.86.176:8001

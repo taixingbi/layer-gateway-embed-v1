@@ -1,7 +1,8 @@
 """Config: override > env > default."""
 import os
+from typing import Any
 
-_overrides: dict = {}
+_overrides: dict[str, Any] = {}
 
 DEFAULT_BACKENDS = "192.168.86.173:8001,192.168.86.176:8001"
 DEFAULT_STRATEGY = "failover"
@@ -30,7 +31,8 @@ def get_backends() -> list[str]:
 
 
 def get_strategy() -> str:
-    return _v("strategy", "ROUTER_STRATEGY", DEFAULT_STRATEGY)
+    raw = _v("strategy", "ROUTER_STRATEGY", DEFAULT_STRATEGY).strip().lower()
+    return raw if raw in ("failover", "round_robin") else DEFAULT_STRATEGY
 
 
 def get_port() -> int:
@@ -43,3 +45,7 @@ def get_max_concurrent() -> int:
 
 def get_timeout() -> float:
     return float(_v("request_timeout", "ROUTER_REQUEST_TIMEOUT", str(DEFAULT_TIMEOUT)))
+
+
+def get_internal_api_key() -> str:
+    return str(_v("internal_api_key", "INTERNAL_API_KEY", ""))

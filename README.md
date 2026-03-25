@@ -1,4 +1,6 @@
-# router-embed
+# layer-gateway-embed-v1
+
+HTTP gateway in front of vLLM embedding servers (failover / round-robin).
 
 ## run local
 
@@ -11,7 +13,8 @@ pip install -r requirements.txt
 ```
 #### run
 ```bash
-kill -9 $(lsof -t -i:8011) 
+python -m app.main
+# or after pip install -e '.[dev]': router-embed
 ```
 
 ## Docker
@@ -23,10 +26,10 @@ docker compose up -d
 # Edit EMBEDDING_BACKENDS in docker-compose.yml
 
 # Option B: docker run
-docker build -t router-embed .
+docker build -t layer-gateway-embed-v1 .
 docker run -d --restart unless-stopped -p 8011:8011 \
   -e EMBEDDING_BACKENDS=192.168.86.173:8001,192.168.86.176:8001 \
-  router-embed
+  layer-gateway-embed-v1
 ```
 
 ## Push to Docker Hub
@@ -36,16 +39,16 @@ docker run -d --restart unless-stopped -p 8011:8011 \
 **Manual:**
 ```bash
 docker login
-docker tag layer-router-embed-v1 taixingbi/layer-router-embed-v1:latest
-docker push taixingbi/layer-router-embed-v1:latest
+docker tag layer-gateway-embed-v1 taixingbi/layer-gateway-embed-v1:latest
+docker push taixingbi/layer-gateway-embed-v1:latest
 ```
 
 **Pull and run:**
 ```bash
-docker pull taixingbi/layer-router-embed-v1:latest
+docker pull taixingbi/layer-gateway-embed-v1:latest
 docker run -d --restart unless-stopped -p 8011:8011 \
   -e EMBEDDING_BACKENDS=192.168.86.173:8001,192.168.86.176:8001 \
-  taixingbi/layer-router-embed-v1:latest
+  taixingbi/layer-gateway-embed-v1:latest
 ```
 
 ## API
@@ -55,12 +58,13 @@ docker run -d --restart unless-stopped -p 8011:8011 \
 curl http://localhost:8011/health
 
 # Models
-curl http://localhost:8011/v1/models
+curl -H "X-Internal-Key: 1234" http://localhost:8011/v1/models
 
 # Embeddings
 curl -X POST http://localhost:8011/v1/embeddings \
+  -H "X-Internal-Key: 1234" \
   -H "Content-Type: application/json" \
   -d '{"model": "BAAI/bge-m3", "input": "hello world"}'
 ```
 
-**Config:** `EMBEDDING_BACKENDS`, `ROUTER_STRATEGY` (failover|round_robin), `ROUTER_PORT` (8011)
+**Config:** `INTERNAL_API_KEY` (required for `/v1/*`; missing server config → 500, wrong key → 401), `EMBEDDING_BACKENDS`, `ROUTER_STRATEGY` (failover|round_robin), `ROUTER_PORT` (8011)

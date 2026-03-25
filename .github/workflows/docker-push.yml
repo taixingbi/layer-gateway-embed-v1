@@ -23,5 +23,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/layer-router-embed-v1:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/layer-router-embed-v1:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/layer-gateway-embed-v1:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/layer-gateway-embed-v1:${{ github.sha }}
