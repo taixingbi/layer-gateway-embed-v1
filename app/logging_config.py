@@ -14,6 +14,7 @@ logger = logging.getLogger("layer_gateway.embed")
 
 class _RequestContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
+        record.env = os.getenv("ENV", "dev")
         rid = get_request_id()
         sid = get_session_id()
         # Outside RequestContextMiddleware (startup/shutdown), context defaults to "-".
@@ -29,7 +30,7 @@ class _RequestContextFilter(logging.Filter):
 
 _LOG_FMT = (
     "%(asctime)s %(levelname)s %(name)s "
-    "request_id=%(request_id)s session_id=%(session_id)s %(message)s"
+    "env=%(env)s request_id=%(request_id)s session_id=%(session_id)s %(message)s"
 )
 
 _loki_handler: LokiHandler | None = None
