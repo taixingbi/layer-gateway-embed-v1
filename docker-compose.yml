@@ -1,0 +1,21 @@
+services:
+  router:
+    image: layer-gateway-embed-v1
+    build: .
+    container_name: layer-gateway-embed-v1
+    restart: unless-stopped
+    ports:
+      - "8011:8011"
+    environment:
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      # vLLM on same Mac: host.docker.internal:8001
+      # vLLM on LAN (default):
+      - EMBEDDING_BACKENDS=${EMBEDDING_BACKENDS}
+      - ROUTER_STRATEGY=${ROUTER_STRATEGY}
+      - ROUTER_PORT=${ROUTER_PORT}
+      - ROUTER_MAX_CONCURRENT=${ROUTER_MAX_CONCURRENT}
+      - ROUTER_REQUEST_TIMEOUT=${ROUTER_REQUEST_TIMEOUT}
+      - ROUTER_RETRY_ATTEMPTS=${ROUTER_RETRY_ATTEMPTS:-1}
+      - GRAFANA_CLOUD_URL=${GRAFANA_CLOUD_URL}
+      - GRAFANA_CLOUD_USER=${GRAFANA_CLOUD_USER}
+      - GRAFANA_CLOUD_WRITE_API_KEY=${GRAFANA_CLOUD_WRITE_API_KEY}
