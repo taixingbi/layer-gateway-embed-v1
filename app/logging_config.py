@@ -1,5 +1,6 @@
 """Stderr logging plus optional Grafana Loki via tb-loki-central-logger."""
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -55,6 +56,7 @@ def setup_logging() -> None:
             labels={
                 "service": "layer-gateway",
                 "component": "embed",
+                "env": os.getenv("ENV", "dev"),  # dev / staging / prod
                 "version": __version__,
             },
             basic_auth=auth,
