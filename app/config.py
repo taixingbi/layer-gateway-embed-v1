@@ -58,6 +58,11 @@ def get_internal_api_key() -> str:
     return str(_v("internal_api_key", "INTERNAL_API_KEY", ""))
 
 
+def get_gpu_trace_header() -> str:
+    """Upstream response header name to log as GPU trace; empty disables gpu= in proxied logs."""
+    return str(_v("gpu_trace_header", "ROUTER_GPU_TRACE_HEADER", "")).strip()
+
+
 def validate_config() -> None:
     if not get_internal_api_key().strip():
         raise ValueError("INTERNAL_API_KEY is required.")

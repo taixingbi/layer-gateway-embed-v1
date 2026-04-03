@@ -81,4 +81,6 @@ curl -X POST http://192.168.86.179:8011/v1/embeddings \
 
 Prefer **headers only** for correlation; do **not** duplicate ids in the JSON body unless you need them there (e.g. clients that cannot set headers, or downstream consumers that only read the body). If you add them to JSON, use clear names like **`request_id`** and **`session_id`**, and confirm your vLLM / OpenAI compatibility layer accepts unknown fields.
 
-**Config:** `INTERNAL_API_KEY` (required at startup), `EMBEDDING_BACKENDS` (at least one backend required), `ROUTER_STRATEGY` (failover|round_robin), `ROUTER_PORT` (8011), `ROUTER_RETRY_ATTEMPTS` (>0, default 1), `ENV` (optional Loki label: dev/staging/prod)
+**Config:** `INTERNAL_API_KEY` (required at startup), `EMBEDDING_BACKENDS` (at least one backend required), `ROUTER_STRATEGY` (failover|round_robin), `ROUTER_PORT` (8011), `ROUTER_RETRY_ATTEMPTS` (>0, default 1), `ENV` (optional Loki label: dev/staging/prod). **`ROUTER_GPU_TRACE_HEADER`** (optional): if set (e.g. `X-GPU-Id`), successful proxy logs include `gpu=` from that upstream response header; your vLLM or reverse proxy must add the header—the gateway does not infer GPU ids.
+
+**Observability:** Successful `proxied` log lines always include `backend=` (chosen vLLM base URL). When `ROUTER_GPU_TRACE_HEADER` is set, they also include `gpu=` (header value, or `-` if absent on the response).

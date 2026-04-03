@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse, Response
 
 from .config import (
     get_backends,
+    get_gpu_trace_header,
     get_internal_api_key,
     get_max_concurrent,
     get_port,
@@ -100,6 +101,14 @@ def _response_headers(upstream: httpx.Response) -> dict[str, str]:
     }
 
 
+def _gpu_trace_for_log(headers: httpx.Headers, header_name: str) -> str | None:
+    name = header_name.strip()
+    if not name:
+        return None
+    v = headers.get(name)
+    return v if v is not None else "-"
+
+
 def _ensure_ready() -> JSONResponse | None:
     if not client or not queue:
         logger.warning("503 not ready")
@@ -139,15 +148,29 @@ async def route(
         t0 = time.perf_counter()
         assert queue is not None and client is not None
         async with queue:
-            r = await proxy(client, request.method, request.url.path, body, headers)
+            result = await proxy(client, request.method, request.url.path, body, headers)
+        r = result.response
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
-        logger.info(
-            "proxied %s %s -> %s duration_ms=%s",
-            request.method,
-            request.url.path,
-            r.status_code,
-            elapsed_ms,
-        )
+        gpu_log = _gpu_trace_for_log(r.headers, get_gpu_trace_header())
+        if gpu_log is not None:
+            logger.info(
+                "proxied %s %s -> %s duration_ms=%s backend=%s gpu=%s",
+                request.method,
+                request.url.path,
+                r.status_code,
+                elapsed_ms,
+                result.backend_url,
+                gpu_log,
+            )
+        else:
+            logger.info(
+                "proxied %s %s -> %s duration_ms=%s backend=%s",
+                request.method,
+                request.url.path,
+                r.status_code,
+                elapsed_ms,
+                result.backend_url,
+            )
         return Response(r.content, r.status_code, _response_headers(r))
     except (httpx.TimeoutException, httpx.ConnectError) as e:
         logger.warning(

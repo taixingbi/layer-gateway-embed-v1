@@ -1,5 +1,6 @@
 """Proxy to vLLM backends with failover or round-robin."""
 import threading
+from typing import NamedTuple
 
 import httpx
 
@@ -9,6 +10,11 @@ from .logging_config import logger
 _rr_lock = threading.Lock()
 _rr_key: tuple[str, ...] | None = None
 _rr_idx = 0
+
+
+class ProxyResult(NamedTuple):
+    response: httpx.Response
+    backend_url: str
 
 
 def _next_round_robin_backend(backends: list[str]) -> str:
@@ -53,7 +59,7 @@ async def proxy(client: httpx.AsyncClient, method: str, path: str, body: bytes, 
     timeout = get_timeout()
     # attempts=1 is intentional: one request per backend candidate unless configured otherwise.
     attempts = get_retry_attempts()
-    err, last_resp = None, None
+    err, last_resp, last_backend_url = None, None, None
 
     logger.info(
         "proxy %s %s strategy=%s candidates=%d timeout=%s body_bytes=%d",
@@ -74,11 +80,11 @@ async def proxy(client: httpx.AsyncClient, method: str, path: str, body: bytes, 
                 if strategy == "failover" and (r.status_code == 408 or r.status_code >= 500):
                     await r.aread()
                     logger.warning("backend %s returned %s for %s", url, r.status_code, path)
-                    last_resp, err = r, None
+                    last_resp, last_backend_url, err = r, url, None
                     if attempt < attempts - 1:
                         continue
                     break
-                return r
+                return ProxyResult(r, url)
             except (httpx.TimeoutException, httpx.ConnectError) as e:
                 err = e
                 logger.warning("backend %s failed for %s: %s", url, path, e)
@@ -86,6 +92,6 @@ async def proxy(client: httpx.AsyncClient, method: str, path: str, body: bytes, 
                     continue
                 break
 
-    if last_resp:
-        return last_resp
+    if last_resp is not None and last_backend_url is not None:
+        return ProxyResult(last_resp, last_backend_url)
     raise err or RuntimeError("No backends")
