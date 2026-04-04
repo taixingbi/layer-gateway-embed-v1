@@ -1,37 +1,80 @@
 """Stderr logging plus optional Grafana Loki via tb-loki-central-logger."""
+import json
 import logging
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from tb_loki_central_logger import LokiHandler, basic_auth_from_env, load_dotenv
 
 from . import __version__
-from .request_context import get_request_id, get_session_id
+from .request_context import (
+    get_http_method,
+    get_http_path,
+    get_http_status,
+    get_request_id,
+    get_session_id,
+)
 
 logger = logging.getLogger("layer_gateway.embed")
+
+_LOG_TZ = ZoneInfo("America/New_York")
+# Merged onto JSON when present on the LogRecord (from logger.*(..., extra={...})).
+_EXTRA_JSON_FIELDS = (
+    "duration_ms",
+    "backend",
+    "gpu",
+    "reason",
+    "upstream_status",
+    "error_type",
+    "error_message",
+    "missing",
+)
 
 
 class _RequestContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        record.env = os.getenv("ENV", "dev")
         rid = get_request_id()
         sid = get_session_id()
         # Outside RequestContextMiddleware (startup/shutdown), context defaults to "-".
-        # During a request, middleware always sets request_id; session stays "-" if no header.
-        if rid == "-":
-            record.request_id = "-"
-            record.session_id = "-"
-        else:
-            record.request_id = rid
-            record.session_id = sid
+        # When request_id is missing, keep session_id as "-" in logs (no partial correlation).
+        record.request_id = "-" if rid == "-" else rid
+        record.session_id = "-" if rid == "-" else sid
+        record.method = get_http_method()
+        record.path = get_http_path()
+        # ASGI response.start runs after the route returns; logs inside the route
+        # must pass status via logger.info(..., extra={"status": ...}) or it stays "-".
+        ctx_status = get_http_status()
+        if ctx_status != "-":
+            record.status = ctx_status
+        elif not hasattr(record, "status"):
+            record.status = "-"
         return True
 
 
-_LOG_FMT = (
-    "%(asctime)s %(levelname)s %(name)s "
-    "env=%(env)s request_id=%(request_id)s session_id=%(session_id)s %(message)s"
-)
+class _JsonFormatter(logging.Formatter):
+    """One JSON object per line for stderr and Loki."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, object] = {
+            "ts": datetime.fromtimestamp(record.created, tz=_LOG_TZ).isoformat(),
+            "request_id": getattr(record, "request_id", "-"),
+            "session_id": getattr(record, "session_id", "-"),
+            "method": getattr(record, "method", "-"),
+            "path": getattr(record, "path", "-"),
+            "status": getattr(record, "status", "-"),
+            "message": record.getMessage(),
+            "error": self.formatException(record.exc_info) if record.exc_info else None,
+        }
+        for key in _EXTRA_JSON_FIELDS:
+            if hasattr(record, key):
+                payload[key] = getattr(record, key)
+        return json.dumps(payload, ensure_ascii=False)
+
+
+_JSON_FORMATTER = _JsonFormatter()
 
 _loki_handler: LokiHandler | None = None
 
@@ -48,7 +91,7 @@ def setup_logging() -> None:
 
     stderr = logging.StreamHandler(sys.stderr)
     stderr.setLevel(logging.INFO)
-    stderr.setFormatter(logging.Formatter(_LOG_FMT))
+    stderr.setFormatter(_JSON_FORMATTER)
     logger.addHandler(stderr)
 
     auth = basic_auth_from_env()
@@ -63,7 +106,7 @@ def setup_logging() -> None:
             basic_auth=auth,
         )
         _loki_handler.setLevel(logging.INFO)
-        _loki_handler.setFormatter(logging.Formatter(_LOG_FMT))
+        _loki_handler.setFormatter(_JSON_FORMATTER)
         logger.addHandler(_loki_handler)
         logger.info("centralized Loki logging enabled")
     else:

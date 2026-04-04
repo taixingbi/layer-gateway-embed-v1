@@ -20,7 +20,7 @@ from .config import (
 )
 from .logging_config import logger, setup_logging, shutdown_logging
 from .request_context import RequestContextMiddleware, get_request_id, get_session_id
-from .router import proxy
+from .router import TRANSIENT_UPSTREAM_ERRORS, proxy
 
 client: httpx.AsyncClient | None = None
 queue: asyncio.Semaphore | None = None
@@ -109,13 +109,16 @@ def _gpu_trace_for_log(headers: httpx.Headers, header_name: str) -> str | None:
     return v if v is not None else "-"
 
 
+def _service_unavailable_json(reason: str, error_body: str) -> JSONResponse:
+    logger.warning("service unavailable", extra={"status": 503, "reason": reason})
+    return JSONResponse(status_code=503, content={"error": error_body})
+
+
 def _ensure_ready() -> JSONResponse | None:
     if not client or not queue:
-        logger.warning("503 not ready")
-        return JSONResponse(status_code=503, content={"error": "Not ready"})
+        return _service_unavailable_json("not_ready", "Not ready")
     if not get_backends():
-        logger.warning("503 no backends configured")
-        return JSONResponse(status_code=503, content={"error": "No backends. Set EMBEDDING_BACKENDS."})
+        return _service_unavailable_json("no_backends", "No backends. Set EMBEDDING_BACKENDS.")
     return None
 
 
@@ -139,45 +142,36 @@ async def route(
     verify_internal_key(x_internal_key)
     not_ready = _ensure_ready()
     if not_ready:
-        logger.warning("rejecting %s %s before proxy", request.method, request.url.path)
         return not_ready
 
     headers = _upstream_headers(request)
     body = await request.body()
     try:
         t0 = time.perf_counter()
-        assert queue is not None and client is not None
         async with queue:
             result = await proxy(client, request.method, request.url.path, body, headers)
         r = result.response
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        extra: dict[str, object] = {
+            "status": r.status_code,
+            "duration_ms": elapsed_ms,
+            "backend": result.backend_url,
+        }
         gpu_log = _gpu_trace_for_log(r.headers, get_gpu_trace_header())
         if gpu_log is not None:
-            logger.info(
-                "proxied %s %s -> %s duration_ms=%s backend=%s gpu=%s",
-                request.method,
-                request.url.path,
-                r.status_code,
-                elapsed_ms,
-                result.backend_url,
-                gpu_log,
-            )
-        else:
-            logger.info(
-                "proxied %s %s -> %s duration_ms=%s backend=%s",
-                request.method,
-                request.url.path,
-                r.status_code,
-                elapsed_ms,
-                result.backend_url,
-            )
+            extra["gpu"] = gpu_log
+        logger.info("proxied upstream response", extra=extra)
         return Response(r.content, r.status_code, _response_headers(r))
-    except (httpx.TimeoutException, httpx.ConnectError) as e:
+    except TRANSIENT_UPSTREAM_ERRORS as e:
         logger.warning(
-            "503 backends unavailable %s %s: %s",
-            request.method,
-            request.url.path,
-            e,
+            "backends unavailable",
+            extra={
+                "status": 503,
+                "reason": "upstream_unreachable",
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+            },
+            exc_info=True,
         )
         return JSONResponse(status_code=503, content={"error": "Backends unavailable"})
 

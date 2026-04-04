@@ -7,6 +7,12 @@ import httpx
 from .config import get_backends, get_retry_attempts, get_strategy, get_timeout
 from .logging_config import logger
 
+# Shared with app.main for except clauses (connect/timeout while talking to backends).
+TRANSIENT_UPSTREAM_ERRORS: tuple[type[Exception], ...] = (
+    httpx.TimeoutException,
+    httpx.ConnectError,
+)
+
 _rr_lock = threading.Lock()
 _rr_key: tuple[str, ...] | None = None
 _rr_idx = 0
@@ -35,13 +41,17 @@ def _candidate_backends(strategy: str, backends: list[str]) -> list[str]:
     return backends
 
 
+def _status_triggers_failover(status_code: int) -> bool:
+    return status_code == 408 or status_code >= 500
+
+
 async def _request_once(
     client: httpx.AsyncClient,
     url: str,
     method: str,
     path: str,
     body: bytes,
-    headers: dict,
+    headers: dict[str, str],
     timeout: float,
 ) -> httpx.Response:
     return await client.request(
@@ -49,7 +59,13 @@ async def _request_once(
     )
 
 
-async def proxy(client: httpx.AsyncClient, method: str, path: str, body: bytes, headers: dict):
+async def proxy(
+    client: httpx.AsyncClient,
+    method: str,
+    path: str,
+    body: bytes,
+    headers: dict[str, str],
+) -> ProxyResult:
     backends = get_backends()
     if not backends:
         raise ValueError("No backends. Set EMBEDDING_BACKENDS.")
@@ -77,17 +93,33 @@ async def proxy(client: httpx.AsyncClient, method: str, path: str, body: bytes, 
         for attempt in range(attempts):
             try:
                 r = await _request_once(client, url, method, path, body, headers, timeout)
-                if strategy == "failover" and (r.status_code == 408 or r.status_code >= 500):
+                if strategy == "failover" and _status_triggers_failover(r.status_code):
                     await r.aread()
-                    logger.warning("backend %s returned %s for %s", url, r.status_code, path)
+                    logger.warning(
+                        "upstream error response",
+                        extra={
+                            "backend": url,
+                            "upstream_status": r.status_code,
+                            "reason": "failover_status",
+                        },
+                    )
                     last_resp, last_backend_url, err = r, url, None
                     if attempt < attempts - 1:
                         continue
                     break
                 return ProxyResult(r, url)
-            except (httpx.TimeoutException, httpx.ConnectError) as e:
+            except TRANSIENT_UPSTREAM_ERRORS as e:
                 err = e
-                logger.warning("backend %s failed for %s: %s", url, path, e)
+                logger.warning(
+                    "upstream request failed",
+                    extra={
+                        "backend": url,
+                        "error_type": type(e).__name__,
+                        "error_message": str(e),
+                        "reason": "connect_or_timeout",
+                    },
+                    exc_info=True,
+                )
                 if attempt < attempts - 1:
                     continue
                 break

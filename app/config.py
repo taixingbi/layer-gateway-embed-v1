@@ -59,7 +59,7 @@ def get_internal_api_key() -> str:
 
 
 def get_gpu_trace_header() -> str:
-    """Upstream response header name to log as GPU trace; empty disables gpu= in proxied logs."""
+    """Upstream response header name; empty omits ``gpu`` in proxied JSON logs."""
     return str(_v("gpu_trace_header", "ROUTER_GPU_TRACE_HEADER", "")).strip()
 
 
