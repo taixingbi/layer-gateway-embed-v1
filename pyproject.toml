@@ -1,33 +1,23 @@
 [build-system]
-requires = ["hatchling>=1.0"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
-name = "router-embed"
-version = "1.0.8"
-description = "HTTP proxy router for vLLM embedding API with round-robin and failover"
+name = "layer-gateway-embed-v1"
+version = "0.1.0"
+description = "Request-level routing gateway for embedding workloads."
 readme = "README.md"
-license = "MIT"
-requires-python = ">=3.11"
-keywords = ["rag", "embedding", "vllm", "router", "load-balancer"]
-
+requires-python = ">=3.12"
 dependencies = [
-    "httpx>=0.20.0",
-    "uvicorn[standard]>=0.20.0",
-    "fastapi>=0.100.0",
+  "fastapi",
+  "uvicorn",
+  "httpx",
+  "prometheus-client",
+  "pydantic",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=7.0",
-    "pytest-asyncio>=0.21.0",
-]
+dev = ["pytest"]
 
-[project.scripts]
-router-embed = "app.main:run"
-
-[tool.hatch.build.targets.wheel]
-packages = ["app"]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
+[tool.setuptools.packages.find]
+include = ["app*"]

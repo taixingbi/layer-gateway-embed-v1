@@ -1,13 +1,23 @@
 services:
+  gateway:
+    build: .
+    ports:
+      - "30181:30181"
+    env_file:
+      - .env
+name: layer-gateway-embed
+
+services:
   router:
     image: layer-gateway-embed-v1
     build: .
     container_name: layer-gateway-embed-v1
     restart: unless-stopped
+    labels:
+      com.layer.service: layer-gateway-embed
     ports:
-      - "8011:8011"
+      - "30181:30181"
     environment:
-      - INTERNAL_API_KEY=1234
       # vLLM on same Mac: host.docker.internal:8001
       # vLLM on LAN (default):
-      - EMBEDDING_BACKENDS=192.168.86.173:8001,192.168.86.176:8001
+      - EMBED_BACKENDS=embed-node-1=http://192.168.86.173:8001,embed-node-2=http://192.168.86.176:8001

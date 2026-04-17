@@ -1,0 +1,202 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from dataclasses import dataclass
+
+import httpx
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
+
+from app.core.config import Settings
+from app.core.logging import log_gateway_event
+from app.metrics.prometheus import (
+    ADMISSION_INQUEUE,
+    ADMISSION_REJECTED,
+    ADMISSION_WAIT,
+    BACKEND_SELECTED,
+    FAILURES,
+    INFLIGHT,
+    LATENCY,
+    REQUESTS,
+    RETRIES,
+)
+from app.models.schemas import EmbeddingRequest
+from app.routing.selector import BackendSelector
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+_BLOCKED_HEADERS = frozenset({"host", "content-length"})
+_EMBEDDINGS_PATH = "/v1/embeddings"
+
+
+@dataclass
+class GatewayContext:
+    settings: Settings
+    selector: BackendSelector
+    client: httpx.AsyncClient
+    queue: asyncio.Semaphore
+
+
+def _safe_headers(req: Request) -> dict[str, str]:
+    return {k: v for k, v in req.headers.items() if k.lower() not in _BLOCKED_HEADERS}
+
+
+def _validate_headers(request: Request) -> tuple[str, str, str]:
+    request_id = request.headers.get("x-request-id")
+    trace_id = request.headers.get("x-trace-id")
+    session_id = request.headers.get("x-session-id")
+    if not request_id or not trace_id or not session_id:
+        raise HTTPException(status_code=400, detail="Missing X-Request-Id, X-Trace-Id, or X-Session-Id")
+    return request_id, trace_id, session_id
+
+
+@router.post("/v1/embeddings")
+async def embeddings(request: Request) -> Response:
+    context: GatewayContext = request.app.state.gateway_context
+    request_id, trace_id, session_id = _validate_headers(request)
+    safe_headers = _safe_headers(request)
+    retryable_statuses = context.settings.retry.retryable_statuses
+    queue_wait_start = time.perf_counter()
+    ADMISSION_INQUEUE.inc()
+    acquired = False
+    try:
+        await asyncio.wait_for(
+            context.queue.acquire(),
+            timeout=context.settings.admission_queue.wait_timeout_ms / 1000.0,
+        )
+        acquired = True
+    except asyncio.TimeoutError:
+        ADMISSION_REJECTED.inc()
+        log_gateway_event(
+            logger,
+            logging.WARNING,
+            "admission_rejected",
+            request_id=request_id,
+            trace_id=trace_id,
+            session_id=session_id,
+            path=_EMBEDDINGS_PATH,
+            status_code=429,
+            error={"kind": "AdmissionQueueTimeout"},
+            gateway_meta={"wait_timeout_ms": context.settings.admission_queue.wait_timeout_ms},
+        )
+        return JSONResponse(status_code=429, content={"error": "Gateway busy, try again"})
+    finally:
+        ADMISSION_INQUEUE.dec()
+
+    queue_wait_ms = (time.perf_counter() - queue_wait_start) * 1000
+    ADMISSION_WAIT.observe(queue_wait_ms)
+    payload = await request.json()
+    parsed = EmbeddingRequest.model_validate(payload)
+    req_class = parsed.classify().value
+
+    try:
+        excluded: set[str] = set()
+        last_exc: Exception | None = None
+
+        for attempt in range(1, context.settings.retry.max_attempts + 1):
+            backend = context.selector.pick(excluded=excluded)
+            if backend is None:
+                FAILURES.labels(backend="none", reason="no_backend").inc()
+                raise HTTPException(status_code=503, detail="No healthy backend available")
+
+            start = time.perf_counter()
+            context.selector.mark_start(backend.name)
+            INFLIGHT.labels(backend=backend.name).inc()
+            BACKEND_SELECTED.labels(backend=backend.name).inc()
+
+            try:
+                upstream = await context.client.post(
+                    f"{backend.url}{_EMBEDDINGS_PATH}",
+                    json=payload,
+                    headers=safe_headers,
+                )
+                latency_ms = (time.perf_counter() - start) * 1000
+                success = upstream.status_code < 500
+                context.selector.mark_result(backend.name, latency_ms, success=success)
+                LATENCY.labels(backend=backend.name).observe(latency_ms)
+                if upstream.status_code in retryable_statuses and attempt < context.settings.retry.max_attempts:
+                    RETRIES.labels(backend=backend.name).inc()
+                    INFLIGHT.labels(backend=backend.name).dec()
+                    excluded.add(backend.name)
+                    log_gateway_event(
+                        logger,
+                        logging.WARNING,
+                        "backend_retry",
+                        request_id=request_id,
+                        trace_id=trace_id,
+                        session_id=session_id,
+                        path=_EMBEDDINGS_PATH,
+                        backend=backend.name,
+                        latency_ms=latency_ms,
+                        status_code=upstream.status_code,
+                        gateway_meta={"attempt": attempt},
+                    )
+                    continue
+
+                REQUESTS.labels(backend=backend.name, status=str(upstream.status_code), request_class=req_class).inc()
+                INFLIGHT.labels(backend=backend.name).dec()
+                log_gateway_event(
+                    logger,
+                    logging.INFO,
+                    "request_finished",
+                    request_id=request_id,
+                    trace_id=trace_id,
+                    session_id=session_id,
+                    path=_EMBEDDINGS_PATH,
+                    backend=backend.name,
+                    latency_ms=latency_ms,
+                    status_code=upstream.status_code,
+                    gateway_meta={
+                        "model": parsed.model,
+                        "request_class": req_class,
+                        "attempt": attempt,
+                        "queue_wait_ms": queue_wait_ms,
+                    },
+                )
+                return Response(
+                    content=upstream.content,
+                    status_code=upstream.status_code,
+                    media_type=upstream.headers.get("content-type"),
+                )
+            except (httpx.TimeoutException, httpx.HTTPError) as exc:
+                latency_ms = (time.perf_counter() - start) * 1000
+                context.selector.mark_result(backend.name, latency_ms, success=False)
+                FAILURES.labels(backend=backend.name, reason=type(exc).__name__).inc()
+                INFLIGHT.labels(backend=backend.name).dec()
+                last_exc = exc
+                if attempt < context.settings.retry.max_attempts:
+                    RETRIES.labels(backend=backend.name).inc()
+                    excluded.add(backend.name)
+                    log_gateway_event(
+                        logger,
+                        logging.WARNING,
+                        "backend_retry",
+                        request_id=request_id,
+                        trace_id=trace_id,
+                        session_id=session_id,
+                        path=_EMBEDDINGS_PATH,
+                        backend=backend.name,
+                        latency_ms=latency_ms,
+                        error={"kind": type(exc).__name__},
+                        gateway_meta={"attempt": attempt},
+                    )
+                    continue
+                break
+
+        log_gateway_event(
+            logger,
+            logging.WARNING,
+            "request_failed",
+            request_id=request_id,
+            trace_id=trace_id,
+            session_id=session_id,
+            path=_EMBEDDINGS_PATH,
+            error={"kind": type(last_exc).__name__ if last_exc else "unknown"},
+            gateway_meta={"queue_wait_ms": queue_wait_ms},
+        )
+        return JSONResponse(status_code=503, content={"error": "Backends unavailable"})
+    finally:
+        if acquired:
+            context.queue.release()

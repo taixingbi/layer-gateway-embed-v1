@@ -1,15 +1,10 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
-ENV PYTHONUNBUFFERED=1
 WORKDIR /app
+COPY pyproject.toml /app/pyproject.toml
+COPY app /app/app
+COPY README.md /app/README.md
+RUN pip install --no-cache-dir .
 
-COPY pyproject.toml README.md ./
-COPY app/ app/
-RUN pip install --no-cache-dir . \
-    && useradd --create-home --system app \
-    && chown -R app:app /app
-
-USER app
-EXPOSE 8011
-ENV ROUTER_PORT=8011
+EXPOSE 30181
 CMD ["python", "-m", "app.main"]
