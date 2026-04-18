@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
     log_gateway_event(
         logger,
         logging.INFO,
-        "gateway_started",
+        "gateway_process_started",
         gateway_meta={
             "backends_count": len(settings.backends),
             "admission_max_concurrent": settings.admission_queue.max_concurrent,

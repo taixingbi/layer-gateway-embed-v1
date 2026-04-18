@@ -31,6 +31,34 @@ _BLOCKED_HEADERS = frozenset({"host", "content-length"})
 _EMBEDDINGS_PATH = "/v1/embeddings"
 
 
+def _routing_debug(selector: BackendSelector, excluded: set[str]) -> dict[str, object]:
+    r = selector.routing
+    rows: dict[str, object] = {}
+    for b in selector.backends:
+        st = selector.state[b.name]
+        err = st.error_rate()
+        score = (st.inflight * r.inflight_weight) + (st.latency_ms * r.latency_weight) + (err * r.error_weight)
+        rows[b.name] = {
+            "score": score,
+            "inflight": st.inflight,
+            "latency_ms": st.latency_ms,
+            "error_rate": err,
+            "requests": st.requests,
+            "errors": st.errors,
+            "circuit_open": st.circuit_open(),
+            "excluded": b.name in excluded,
+            "eligible": (b.name not in excluded) and (not st.circuit_open()),
+        }
+    return {
+        "backends": rows,
+        "weights": {
+            "inflight": r.inflight_weight,
+            "latency": r.latency_weight,
+            "error": r.error_weight,
+        },
+    }
+
+
 @dataclass
 class GatewayContext:
     settings: Settings
@@ -91,6 +119,25 @@ async def embeddings(request: Request) -> Response:
     parsed = EmbeddingRequest.model_validate(payload)
     req_class = parsed.classify().value
 
+    log_gateway_event(
+        logger,
+        logging.INFO,
+        "gateway_started",
+        request_id=request_id,
+        trace_id=trace_id,
+        session_id=session_id,
+        path=_EMBEDDINGS_PATH,
+        gateway_meta={
+            "backends_count": len(context.settings.backends),
+            "admission_max_concurrent": context.settings.admission_queue.max_concurrent,
+            "admission_wait_timeout_ms": context.settings.admission_queue.wait_timeout_ms,
+            "queue_wait_ms": queue_wait_ms,
+            "model": parsed.model,
+            "request_class": req_class,
+            "client_host": getattr(request.client, "host", None),
+        },
+    )
+
     try:
         excluded: set[str] = set()
         last_exc: Exception | None = None
@@ -99,7 +146,33 @@ async def embeddings(request: Request) -> Response:
             backend = context.selector.pick(excluded=excluded)
             if backend is None:
                 FAILURES.labels(backend="none", reason="no_backend").inc()
+                log_gateway_event(
+                    logger,
+                    logging.WARNING,
+                    "routing_no_backend",
+                    request_id=request_id,
+                    trace_id=trace_id,
+                    session_id=session_id,
+                    path=_EMBEDDINGS_PATH,
+                    gateway_meta={"attempt": attempt, "excluded": sorted(excluded), **_routing_debug(context.selector, excluded)},
+                )
                 raise HTTPException(status_code=503, detail="No healthy backend available")
+
+            log_gateway_event(
+                logger,
+                logging.INFO,
+                "routing_pick",
+                request_id=request_id,
+                trace_id=trace_id,
+                session_id=session_id,
+                path=_EMBEDDINGS_PATH,
+                backend=backend.name,
+                gateway_meta={
+                    "attempt": attempt,
+                    "excluded": sorted(excluded),
+                    **_routing_debug(context.selector, excluded),
+                },
+            )
 
             start = time.perf_counter()
             context.selector.mark_start(backend.name)
