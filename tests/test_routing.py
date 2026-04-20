@@ -17,6 +17,21 @@ def test_routing_prefers_lower_score():
     assert selector.pick().name == "b"
 
 
+def test_failures_do_not_poison_latency_ewma():
+    selector = BackendSelector(
+        backends=(
+            BackendConfig(name="a", url="http://a"),
+            BackendConfig(name="b", url="http://b"),
+        ),
+        routing=RoutingConfig(inflight_weight=10.0, latency_weight=1.0, error_weight=100.0),
+        circuit_breaker=CircuitBreakerConfig(failure_threshold=100, reset_timeout_sec=30),
+    )
+    for _ in range(5):
+        selector.mark_result("a", latency_ms=30.0, success=True)
+    selector.mark_result("a", latency_ms=15000.0, success=False)
+    assert selector.state["a"].latency_ms == 30.0
+
+
 def test_circuit_breaker_opens_after_threshold():
     selector = BackendSelector(
         backends=(BackendConfig(name="a", url="http://a"),),

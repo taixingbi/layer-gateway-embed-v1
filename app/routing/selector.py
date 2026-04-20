@@ -64,8 +64,8 @@ class BackendSelector:
         s = self.state[backend_name]
         s.inflight = max(0, s.inflight - 1)
         s.requests += 1
-        s.latency_ms = latency_ms if s.latency_ms == 0 else (s.latency_ms * 0.8) + (latency_ms * 0.2)
         if success:
+            s.latency_ms = latency_ms if s.latency_ms == 0 else (s.latency_ms * 0.8) + (latency_ms * 0.2)
             s.consecutive_failures = 0
             s.circuit_open_until = 0.0
             return
