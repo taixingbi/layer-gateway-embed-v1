@@ -31,11 +31,11 @@ class CircuitBreakerConfig:
 
 @dataclass(frozen=True)
 class RoutingConfig:
-    inflight_weight: float = 10.0
-    latency_weight: float = 1.0
+    inflight_weight: float = 20.0
+    latency_weight: float = 0.5
     error_weight: float = 100.0
-    exploration_rate: float = 0.03
-    max_idle_ms: int = 3000
+    exploration_rate: float = 0.15
+    max_idle_ms: int = 500
 
 
 @dataclass(frozen=True)
@@ -123,16 +123,16 @@ def get_settings() -> Settings:
             reset_timeout_sec=max(1, int(os.getenv("CB_RESET_TIMEOUT_SEC", "30"))),
         ),
         routing=RoutingConfig(
-            inflight_weight=float(os.getenv("ROUTING_INFLIGHT_WEIGHT", "10.0")),
-            latency_weight=float(os.getenv("ROUTING_LATENCY_WEIGHT", "1.0")),
+            inflight_weight=float(os.getenv("ROUTING_INFLIGHT_WEIGHT", "20.0")),
+            latency_weight=float(os.getenv("ROUTING_LATENCY_WEIGHT", "0.5")),
             error_weight=float(os.getenv("ROUTING_ERROR_WEIGHT", "100.0")),
             exploration_rate=_to_float_clamped(
                 os.getenv("ROUTING_EXPLORATION_RATE"),
-                0.03,
+                0.15,
                 minimum=0.0,
                 maximum=1.0,
             ),
-            max_idle_ms=max(0, int(os.getenv("ROUTING_MAX_IDLE_MS", "3000"))),
+            max_idle_ms=max(0, int(os.getenv("ROUTING_MAX_IDLE_MS", "500"))),
         ),
         admission_queue=AdmissionQueueConfig(
             max_concurrent=max(1, int(os.getenv("ADMISSION_MAX_CONCURRENT", "20"))),
