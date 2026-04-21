@@ -127,11 +127,11 @@ async def embeddings(request: Request) -> Response:
         trace_id=trace_id,
         session_id=session_id,
         path=_EMBEDDINGS_PATH,
+        queue_wait_ms=queue_wait_ms,
         gateway_meta={
             "backends_count": len(context.settings.backends),
             "admission_max_concurrent": context.settings.admission_queue.max_concurrent,
             "admission_wait_timeout_ms": context.settings.admission_queue.wait_timeout_ms,
-            "queue_wait_ms": queue_wait_ms,
             "model": parsed.model,
             "request_class": req_class,
             "client_host": getattr(request.client, "host", None),
@@ -154,6 +154,7 @@ async def embeddings(request: Request) -> Response:
                     trace_id=trace_id,
                     session_id=session_id,
                     path=_EMBEDDINGS_PATH,
+                    queue_wait_ms=queue_wait_ms,
                     gateway_meta={"attempt": attempt, "excluded": sorted(excluded), **_routing_debug(context.selector, excluded)},
                 )
                 raise HTTPException(status_code=503, detail="No healthy backend available")
@@ -167,6 +168,7 @@ async def embeddings(request: Request) -> Response:
                 session_id=session_id,
                 path=_EMBEDDINGS_PATH,
                 backend=backend.name,
+                queue_wait_ms=queue_wait_ms,
                 gateway_meta={
                     "attempt": attempt,
                     "excluded": sorted(excluded),
@@ -174,6 +176,7 @@ async def embeddings(request: Request) -> Response:
                 },
             )
 
+            # Upstream-only wall time: gateway -> backend HTTP round-trip (excludes admission and body parse above).
             start = time.perf_counter()
             context.selector.mark_start(backend.name)
             INFLIGHT.labels(backend=backend.name).inc()
@@ -203,6 +206,7 @@ async def embeddings(request: Request) -> Response:
                         path=_EMBEDDINGS_PATH,
                         backend=backend.name,
                         latency_ms=latency_ms,
+                        queue_wait_ms=queue_wait_ms,
                         status_code=upstream.status_code,
                         gateway_meta={"attempt": attempt},
                     )
@@ -220,12 +224,12 @@ async def embeddings(request: Request) -> Response:
                     path=_EMBEDDINGS_PATH,
                     backend=backend.name,
                     latency_ms=latency_ms,
+                    queue_wait_ms=queue_wait_ms,
                     status_code=upstream.status_code,
                     gateway_meta={
                         "model": parsed.model,
                         "request_class": req_class,
                         "attempt": attempt,
-                        "queue_wait_ms": queue_wait_ms,
                     },
                 )
                 return Response(
@@ -252,6 +256,7 @@ async def embeddings(request: Request) -> Response:
                         path=_EMBEDDINGS_PATH,
                         backend=backend.name,
                         latency_ms=latency_ms,
+                        queue_wait_ms=queue_wait_ms,
                         error={"kind": type(exc).__name__},
                         gateway_meta={"attempt": attempt},
                     )
@@ -266,8 +271,8 @@ async def embeddings(request: Request) -> Response:
             trace_id=trace_id,
             session_id=session_id,
             path=_EMBEDDINGS_PATH,
+            queue_wait_ms=queue_wait_ms,
             error={"kind": type(last_exc).__name__ if last_exc else "unknown"},
-            gateway_meta={"queue_wait_ms": queue_wait_ms},
         )
         return JSONResponse(status_code=503, content={"error": "Backends unavailable"})
     finally:

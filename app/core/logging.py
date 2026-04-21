@@ -40,6 +40,7 @@ def log_gateway_event(
     path: str | None = None,
     backend: str | None = None,
     latency_ms: float | None = None,
+    queue_wait_ms: float | None = None,
     status_code: int | None = None,
     error: Mapping[str, Any] | None = None,
     gateway_meta: Mapping[str, Any] | None = None,
@@ -57,6 +58,8 @@ def log_gateway_event(
         extra["backend"] = backend
     if latency_ms is not None:
         extra["latency_ms"] = latency_ms
+    if queue_wait_ms is not None:
+        extra["queue_wait_ms"] = queue_wait_ms
     if status_code is not None:
         extra["status_code"] = status_code
     if error is not None:
@@ -96,6 +99,8 @@ class JsonLogFormatter(logging.Formatter):
             payload[key] = val if val not in (None, "") else "-"
         if getattr(record, "latency_ms", None) is not None:
             payload["latency_ms"] = record.latency_ms
+        if getattr(record, "queue_wait_ms", None) is not None:
+            payload["queue_wait_ms"] = record.queue_wait_ms
         if getattr(record, "status_code", None) is not None:
             payload["status_code"] = record.status_code
         err = getattr(record, "structured_error", None)
