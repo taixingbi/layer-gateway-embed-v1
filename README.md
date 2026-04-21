@@ -48,6 +48,7 @@ Set values via environment variables (see `.env.example`):
 
 - `docs/design.md`
 - `docs/status-codes.md`
+- `docs/request-response-and-logging.md`
 - `docs/run-locally.md`
 - `docs/docker.md`
 
