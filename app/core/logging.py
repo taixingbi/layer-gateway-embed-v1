@@ -1,3 +1,5 @@
+"""Gateway JSON log events and uvicorn logging configuration."""
+
 from __future__ import annotations
 
 import json
@@ -16,6 +18,7 @@ _GATEWAY_OPTIONAL_STRINGS = ("trace_id", "request_id", "session_id", "path", "ba
 
 
 def _load_log_timezone(name: str) -> ZoneInfo:
+    """Resolve `LOG_TIMEZONE` / formatter timezone (falls back to New York)."""
     raw = (name or "EST").strip()
     if raw.upper() in ("EST", "EDT") or raw == "US/Eastern":
         raw = "America/New_York"
@@ -26,6 +29,7 @@ def _load_log_timezone(name: str) -> ZoneInfo:
 
 
 def _gateway_env() -> str:
+    """Return `GATEWAY_ENV` or `ENV` (default `dev`) for log payloads."""
     return os.environ.get("GATEWAY_ENV") or os.environ.get("ENV", "dev")
 
 
@@ -45,6 +49,7 @@ def log_gateway_event(
     error: Mapping[str, Any] | None = None,
     gateway_meta: Mapping[str, Any] | None = None,
 ) -> None:
+    """Emit a gateway log record; extras become JSON fields in `JsonLogFormatter`."""
     extra: dict[str, Any] = {"event": event, "service": "gateway", "env": _gateway_env()}
     if request_id is not None:
         extra["request_id"] = request_id
@@ -70,12 +75,15 @@ def log_gateway_event(
 
 
 class JsonLogFormatter(logging.Formatter):
+    """Format `log_gateway_event` records as JSON; other records use a legacy JSON shape."""
+
     def __init__(self, *, timezone: str = "America/New_York", extra_fields: Sequence[str] = ()) -> None:
         super().__init__()
         self._tz = _load_log_timezone(timezone)
         self._extras = tuple(extra_fields)
 
     def format(self, record: logging.LogRecord) -> str:
+        """Return a single JSON object per line."""
         if getattr(record, "event", None):
             return self._format_gateway(record)
         return self._format_legacy(record)
@@ -87,6 +95,7 @@ class JsonLogFormatter(logging.Formatter):
         return levelname
 
     def _format_gateway(self, record: logging.LogRecord) -> str:
+        """Serialize gateway `extra` fields into the stable gateway JSON schema."""
         payload: dict[str, Any] = {
             "ts": datetime.fromtimestamp(record.created, tz=self._tz).isoformat(),
             "level": self._gateway_level(record.levelname),
@@ -116,6 +125,7 @@ class JsonLogFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False)
 
     def _format_legacy(self, record: logging.LogRecord) -> str:
+        """Serialize non-gateway log records as compact JSON."""
         err = self.formatException(record.exc_info) if record.exc_info else None
         payload: dict[str, object] = {
             "ts": datetime.fromtimestamp(record.created, tz=self._tz).isoformat(),
@@ -136,6 +146,7 @@ class JsonLogFormatter(logging.Formatter):
 
 
 def build_logging_config(*, level_name: str, json_logs: bool) -> dict[str, Any]:
+    """Build a `dictConfig` for uvicorn/root logging to stdout."""
     formatter_name = "json" if json_logs else "standard"
     formatters: dict[str, Any] = {
         "json": {
@@ -166,4 +177,5 @@ def build_logging_config(*, level_name: str, json_logs: bool) -> dict[str, Any]:
 
 
 def new_request_id() -> str:
+    """Return a new UUID string for `X-Request-Id`."""
     return str(uuid.uuid4())

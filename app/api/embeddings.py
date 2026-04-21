@@ -1,3 +1,5 @@
+"""`POST /v1/embeddings`: admission queue, routing, upstream proxy, metrics."""
+
 from __future__ import annotations
 
 import asyncio
@@ -32,6 +34,10 @@ _EMBEDDINGS_PATH = "/v1/embeddings"
 
 
 def _routing_debug(selector: BackendSelector, excluded: set[str]) -> dict[str, object]:
+    """
+    Build `gateway_meta` for routing logs: per-backend score, inflight, latency EWMA,
+    error rate, circuit fields, and routing weights.
+    """
     r = selector.routing
     rows: dict[str, object] = {}
     for b in selector.backends:
@@ -64,6 +70,8 @@ def _routing_debug(selector: BackendSelector, excluded: set[str]) -> dict[str, o
 
 @dataclass
 class GatewayContext:
+    """Shared process state: settings, selector, HTTP client, admission semaphore."""
+
     settings: Settings
     selector: BackendSelector
     client: httpx.AsyncClient
@@ -71,10 +79,12 @@ class GatewayContext:
 
 
 def _safe_headers(req: Request) -> dict[str, str]:
+    """Copy incoming headers except hop-by-hop fields (`host`, `content-length`)."""
     return {k: v for k, v in req.headers.items() if k.lower() not in _BLOCKED_HEADERS}
 
 
 def _validate_headers(request: Request) -> tuple[str, str, str]:
+    """Require `X-Request-Id`, `X-Trace-Id`, and `X-Session-Id` (400 if missing)."""
     request_id = request.headers.get("x-request-id")
     trace_id = request.headers.get("x-trace-id")
     session_id = request.headers.get("x-session-id")
@@ -85,6 +95,12 @@ def _validate_headers(request: Request) -> tuple[str, str, str]:
 
 @router.post("/v1/embeddings")
 async def embeddings(request: Request) -> Response:
+    """
+    Proxy an embedding request to a selected backend.
+
+    Flow: admission → parse JSON → retry loop (pick backend → POST upstream → metrics/logs).
+    Retries exclude failed backends; `5xx` counts as selector failure for the breaker.
+    """
     context: GatewayContext = request.app.state.gateway_context
     request_id, trace_id, session_id = _validate_headers(request)
     safe_headers = _safe_headers(request)
@@ -180,7 +196,6 @@ async def embeddings(request: Request) -> Response:
                 },
             )
 
-            # Upstream-only wall time: gateway -> backend HTTP round-trip (excludes admission and body parse above).
             start = time.perf_counter()
             context.selector.mark_start(backend.name)
             INFLIGHT.labels(backend=backend.name).inc()

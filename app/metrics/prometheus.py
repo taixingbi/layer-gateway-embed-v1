@@ -1,3 +1,5 @@
+"""Prometheus metric objects and `/metrics` text rendering."""
+
 from __future__ import annotations
 
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
@@ -49,4 +51,5 @@ ADMISSION_INQUEUE = Gauge(
 
 
 def render_metrics() -> tuple[bytes, str]:
+    """Return `(body, content_type)` for Prometheus scrape handlers."""
     return generate_latest(), CONTENT_TYPE_LATEST

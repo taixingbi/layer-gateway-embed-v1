@@ -1,3 +1,5 @@
+"""FastAPI app factory: lifespan wiring, `/health`, `/metrics`, and uvicorn entry."""
+
 from __future__ import annotations
 
 import asyncio
@@ -19,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Initialize shared `httpx` client, routing selector, admission semaphore, and shutdown."""
     settings = get_settings()
     selector = BackendSelector(settings.backends, settings.routing, settings.circuit_breaker)
     timeout = get_timeout(settings.timeouts.connect_ms, settings.timeouts.read_ms)
@@ -45,16 +48,19 @@ app.include_router(embed_router)
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    """Kubernetes-style liveness payload."""
     return {"status": "ok"}
 
 
 @app.get("/metrics")
 def metrics() -> Response:
+    """Prometheus text exposition (`/metrics`)."""
     body, content_type = render_metrics()
     return Response(content=body, media_type=content_type)
 
 
 def run() -> None:
+    """Run uvicorn with host/port and logging config from `get_settings()`."""
     import uvicorn
 
     settings = get_settings()
