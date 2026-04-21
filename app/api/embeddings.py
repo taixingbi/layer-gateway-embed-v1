@@ -172,6 +172,7 @@ async def embeddings(request: Request) -> Response:
                 gateway_meta={
                     "attempt": attempt,
                     "excluded": sorted(excluded),
+                    "decision_reason": context.selector.last_pick_reason,
                     **_routing_debug(context.selector, excluded),
                 },
             )

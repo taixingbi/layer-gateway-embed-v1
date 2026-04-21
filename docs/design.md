@@ -29,6 +29,10 @@ Where:
 
 Lower score is preferred.
 
+To avoid starvation while preserving latency preference, routing also uses two hybrid controls:
+- `ROUTING_EXPLORATION_RATE`: small probability to choose a random healthy backend for fresh samples.
+- `ROUTING_MAX_IDLE_MS`: if a healthy backend has not been selected recently, it is preferred to rebalance traffic.
+
 ## Reliability Controls
 
 - Retry on timeout and retryable statuses (`502`, `503`, `504`)
@@ -61,6 +65,7 @@ Runtime behavior is environment-driven through:
 - retry policy
 - circuit breaker thresholds
 - routing weights
+- routing exploration and idle rebalance knobs
 - backend list
 - logging options
 

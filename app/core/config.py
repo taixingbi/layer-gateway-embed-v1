@@ -34,6 +34,8 @@ class RoutingConfig:
     inflight_weight: float = 10.0
     latency_weight: float = 1.0
     error_weight: float = 100.0
+    exploration_rate: float = 0.03
+    max_idle_ms: int = 3000
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,16 @@ def _to_bool(raw: str | None, default: bool) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in ("1", "true", "yes")
+
+
+def _to_float_clamped(raw: str | None, default: float, *, minimum: float, maximum: float) -> float:
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return max(minimum, min(maximum, value))
 
 
 def _get_backend_configs() -> tuple[BackendConfig, ...]:
@@ -114,6 +126,13 @@ def get_settings() -> Settings:
             inflight_weight=float(os.getenv("ROUTING_INFLIGHT_WEIGHT", "10.0")),
             latency_weight=float(os.getenv("ROUTING_LATENCY_WEIGHT", "1.0")),
             error_weight=float(os.getenv("ROUTING_ERROR_WEIGHT", "100.0")),
+            exploration_rate=_to_float_clamped(
+                os.getenv("ROUTING_EXPLORATION_RATE"),
+                0.03,
+                minimum=0.0,
+                maximum=1.0,
+            ),
+            max_idle_ms=max(0, int(os.getenv("ROUTING_MAX_IDLE_MS", "3000"))),
         ),
         admission_queue=AdmissionQueueConfig(
             max_concurrent=max(1, int(os.getenv("ADMISSION_MAX_CONCURRENT", "20"))),
