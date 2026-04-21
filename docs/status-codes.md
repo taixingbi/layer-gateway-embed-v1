@@ -25,6 +25,8 @@ The gateway can return `503 Service Unavailable` in two gateway-generated cases 
 
 If routing cannot find any backend to send the request to (for example, all are excluded or circuit-open), the gateway returns `503`.
 
+This can also happen during half-open recovery when all remaining candidates are temporarily ineligible for additional probe traffic.
+
 Behavior:
 
 - Raises: `HTTPException(status_code=503, detail="No healthy backend available")`

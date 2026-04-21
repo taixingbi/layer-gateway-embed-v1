@@ -22,11 +22,34 @@ Set values via environment variables (see `.env.example`):
 - `TIMEOUT_CONNECT_MS`
 - `TIMEOUT_READ_MS`
 - `RETRY_MAX_ATTEMPTS`
+- `ADMISSION_MAX_CONCURRENT`
+- `ADMISSION_WAIT_TIMEOUT_MS`
 - `CB_FAILURE_THRESHOLD`
 - `CB_RESET_TIMEOUT_SEC`
+- `CB_HALF_OPEN_MAX_PROBES`
+- `CB_HALF_OPEN_SUCCESS_THRESHOLD`
 - `ROUTING_INFLIGHT_WEIGHT`
 - `ROUTING_LATENCY_WEIGHT`
 - `ROUTING_ERROR_WEIGHT`
+- `ROUTING_EXPLORATION_RATE`
+- `ROUTING_MAX_IDLE_MS`
+
+## Routing and Reliability
+
+- Routing score: `inflight * W1 + latency * W2 + error_rate * W3`
+- Hybrid routing controls:
+  - exploration sampling (`ROUTING_EXPLORATION_RATE`)
+  - idle rebalance (`ROUTING_MAX_IDLE_MS`)
+- Circuit breaker:
+  - open after consecutive failures
+  - half-open probe recovery (`CB_HALF_OPEN_MAX_PROBES`, `CB_HALF_OPEN_SUCCESS_THRESHOLD`)
+
+## Related Docs
+
+- `docs/design.md`
+- `docs/status-codes.md`
+- `docs/run-locally.md`
+- `docs/docker.md`
 
 ## Run
 

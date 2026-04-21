@@ -40,6 +40,8 @@ To avoid starvation while preserving latency preference, routing also uses two h
 - Per-backend circuit breaker:
   - Opens after repeated failures
   - Uses half-open probes after cool-down before full re-enable
+  - Limits concurrent half-open probes (`CB_HALF_OPEN_MAX_PROBES`)
+  - Closes circuit after enough probe successes (`CB_HALF_OPEN_SUCCESS_THRESHOLD`)
   - Excludes backend from routing during cool-down
   - Allows recovery after reset timeout
 
@@ -47,6 +49,9 @@ To avoid starvation while preserving latency preference, routing also uses two h
 
 - Structured JSON logging with gateway event schema
 - Key events: startup, request finished, retry, request failed
+- `routing_pick` includes:
+  - `decision_reason` (`score`, `exploration`, `idle_rebalance`, `none`)
+  - per-backend circuit fields (`circuit_open`, `circuit_half_open`, `half_open_inflight`, `half_open_successes`)
 - Prometheus metrics:
   - request totals
   - request latency
@@ -54,6 +59,7 @@ To avoid starvation while preserving latency preference, routing also uses two h
   - inflight requests
   - failures
   - retries
+  - admission queue wait and rejected counts
 - Operational endpoints:
   - `GET /health`
   - `GET /metrics`
@@ -65,6 +71,7 @@ Runtime behavior is environment-driven through:
 - timeout values
 - retry policy
 - circuit breaker thresholds
+- half-open circuit breaker probe controls
 - routing weights
 - routing exploration and idle rebalance knobs
 - backend list
