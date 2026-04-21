@@ -1,3 +1,5 @@
+import time
+
 from app.core.config import BackendConfig, CircuitBreakerConfig, RoutingConfig
 from app.routing.selector import BackendSelector
 
@@ -120,3 +122,60 @@ def test_exploration_respects_health_and_exclusions():
     selector.mark_result("b", latency_ms=100, success=False)
     picked = selector.pick(excluded={"a"})
     assert picked is None
+
+
+def test_half_open_allows_limited_probes_and_closes_on_success():
+    selector = BackendSelector(
+        backends=(BackendConfig(name="a", url="http://a"),),
+        routing=RoutingConfig(exploration_rate=0.0, max_idle_ms=0),
+        circuit_breaker=CircuitBreakerConfig(
+            failure_threshold=1,
+            reset_timeout_sec=30,
+            half_open_max_probes=1,
+            half_open_success_threshold=1,
+        ),
+    )
+
+    selector.mark_start("a")
+    selector.mark_result("a", latency_ms=50, success=False)
+    state = selector.state["a"]
+    state.circuit_open_until = time.time() - 1.0
+
+    picked = selector.pick()
+    assert picked is not None
+    assert picked.name == "a"
+    assert state.circuit_half_open is True
+
+    selector.mark_start("a")
+    assert state.half_open_inflight == 1
+    assert selector.pick() is None
+
+    selector.mark_result("a", latency_ms=20, success=True)
+    assert state.circuit_half_open is False
+    assert state.circuit_open_until == 0.0
+    assert state.consecutive_failures == 0
+
+
+def test_half_open_failure_reopens_immediately():
+    selector = BackendSelector(
+        backends=(BackendConfig(name="a", url="http://a"),),
+        routing=RoutingConfig(exploration_rate=0.0, max_idle_ms=0),
+        circuit_breaker=CircuitBreakerConfig(
+            failure_threshold=1,
+            reset_timeout_sec=30,
+            half_open_max_probes=1,
+            half_open_success_threshold=2,
+        ),
+    )
+
+    selector.mark_start("a")
+    selector.mark_result("a", latency_ms=50, success=False)
+    state = selector.state["a"]
+    state.circuit_open_until = time.time() - 1.0
+
+    assert selector.pick() is not None
+    selector.mark_start("a")
+    selector.mark_result("a", latency_ms=50, success=False)
+
+    assert state.circuit_half_open is False
+    assert state.circuit_open() is True

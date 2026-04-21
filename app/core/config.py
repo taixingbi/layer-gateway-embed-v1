@@ -27,6 +27,8 @@ class RetryConfig:
 class CircuitBreakerConfig:
     failure_threshold: int = 5
     reset_timeout_sec: int = 30
+    half_open_max_probes: int = 1
+    half_open_success_threshold: int = 1
 
 
 @dataclass(frozen=True)
@@ -121,6 +123,8 @@ def get_settings() -> Settings:
         circuit_breaker=CircuitBreakerConfig(
             failure_threshold=max(1, int(os.getenv("CB_FAILURE_THRESHOLD", "5"))),
             reset_timeout_sec=max(1, int(os.getenv("CB_RESET_TIMEOUT_SEC", "30"))),
+            half_open_max_probes=max(1, int(os.getenv("CB_HALF_OPEN_MAX_PROBES", "1"))),
+            half_open_success_threshold=max(1, int(os.getenv("CB_HALF_OPEN_SUCCESS_THRESHOLD", "1"))),
         ),
         routing=RoutingConfig(
             inflight_weight=float(os.getenv("ROUTING_INFLIGHT_WEIGHT", "20.0")),

@@ -39,6 +39,7 @@ To avoid starvation while preserving latency preference, routing also uses two h
 - Configurable retry attempts (`RETRY_MAX_ATTEMPTS`)
 - Per-backend circuit breaker:
   - Opens after repeated failures
+  - Uses half-open probes after cool-down before full re-enable
   - Excludes backend from routing during cool-down
   - Allows recovery after reset timeout
 

@@ -46,6 +46,9 @@ def _routing_debug(selector: BackendSelector, excluded: set[str]) -> dict[str, o
             "requests": st.requests,
             "errors": st.errors,
             "circuit_open": st.circuit_open(),
+            "circuit_half_open": st.circuit_half_open,
+            "half_open_inflight": st.half_open_inflight,
+            "half_open_successes": st.half_open_successes,
             "excluded": b.name in excluded,
             "eligible": (b.name not in excluded) and (not st.circuit_open()),
         }

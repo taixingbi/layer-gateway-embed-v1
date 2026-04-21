@@ -16,6 +16,9 @@ class BackendState:
     requests: int = 0
     consecutive_failures: int = 0
     circuit_open_until: float = 0.0
+    circuit_half_open: bool = False
+    half_open_inflight: int = 0
+    half_open_successes: int = 0
     last_selected_at: float = field(default_factory=time.time)
 
     def error_rate(self) -> float:
@@ -42,6 +45,18 @@ class BackendSelector:
         self.state: Dict[str, BackendState] = {b.name: BackendState() for b in backends}
         self.last_pick_reason = "score"
 
+    def _open_circuit(self, s: BackendState) -> None:
+        s.circuit_open_until = time.time() + self.circuit_breaker.reset_timeout_sec
+        s.circuit_half_open = False
+        s.half_open_inflight = 0
+        s.half_open_successes = 0
+
+    def _close_circuit(self, s: BackendState) -> None:
+        s.circuit_open_until = 0.0
+        s.circuit_half_open = False
+        s.half_open_inflight = 0
+        s.half_open_successes = 0
+
     def _score(self, backend_name: str) -> float:
         state = self.state[backend_name]
         return (
@@ -52,10 +67,19 @@ class BackendSelector:
 
     def _eligible_backends(self, excluded_names: set[str]) -> list[BackendConfig]:
         eligible: list[BackendConfig] = []
+        now = time.time()
         for backend in self.backends:
             if backend.name in excluded_names:
                 continue
-            if self.state[backend.name].circuit_open():
+            state = self.state[backend.name]
+            if state.circuit_open():
+                continue
+            if state.circuit_open_until > 0 and not state.circuit_half_open and now >= state.circuit_open_until:
+                # Cool-down ended: allow controlled probes before full recovery.
+                state.circuit_half_open = True
+                state.half_open_inflight = 0
+                state.half_open_successes = 0
+            if state.circuit_half_open and state.half_open_inflight >= self.circuit_breaker.half_open_max_probes:
                 continue
             eligible.append(backend)
         return eligible
@@ -101,18 +125,29 @@ class BackendSelector:
         return backend
 
     def mark_start(self, backend_name: str) -> None:
-        self.state[backend_name].inflight += 1
+        s = self.state[backend_name]
+        s.inflight += 1
+        if s.circuit_half_open:
+            s.half_open_inflight += 1
 
     def mark_result(self, backend_name: str, latency_ms: float, success: bool) -> None:
         s = self.state[backend_name]
         s.inflight = max(0, s.inflight - 1)
+        if s.circuit_half_open:
+            s.half_open_inflight = max(0, s.half_open_inflight - 1)
         s.requests += 1
         if success:
             s.latency_ms = latency_ms if s.latency_ms == 0 else (s.latency_ms * 0.2) + (latency_ms * 0.8)
-            s.consecutive_failures = 0
-            s.circuit_open_until = 0.0
+            if s.circuit_half_open:
+                s.half_open_successes += 1
+                if s.half_open_successes >= self.circuit_breaker.half_open_success_threshold:
+                    s.consecutive_failures = 0
+                    self._close_circuit(s)
+            else:
+                s.consecutive_failures = 0
+                self._close_circuit(s)
             return
         s.errors += 1
         s.consecutive_failures += 1
-        if s.consecutive_failures >= self.circuit_breaker.failure_threshold:
-            s.circuit_open_until = time.time() + self.circuit_breaker.reset_timeout_sec
+        if s.circuit_half_open or s.consecutive_failures >= self.circuit_breaker.failure_threshold:
+            self._open_circuit(s)
