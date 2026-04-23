@@ -61,7 +61,7 @@ pip install .
 python -m app.main
 ```
 
-## Example
+## test in k3s
 
 ```bash
 curl http://192.168.86.179:30181/health
