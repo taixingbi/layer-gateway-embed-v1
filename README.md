@@ -66,10 +66,14 @@ python -m app.main
 OpenAPI / Swagger UI: [http://192.168.86.179:30181/docs](http://192.168.86.179:30181/docs)
 
 ```bash
+## simple 
 curl -X POST http://192.168.86.179:30181/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{"model":"BAAI/bge-m3","input":"hello world"}'
+```
 
+```bash
+## header with request-id, trace-id and session id
 curl -X POST http://192.168.86.179:30181/v1/embeddings \
   -H "Content-Type: application/json" \
   -H "X-Request-Id: request_id_1" \
