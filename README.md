@@ -61,15 +61,19 @@ pip install .
 python -m app.main
 ```
 
-## test in k3s
+## test after deploy in k3s
 
 ```bash
 curl http://192.168.86.179:30181/health
+```
 
+```bash
 curl -X POST http://192.168.86.179:30181/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{"model":"BAAI/bge-m3","input":"hello world"}'
+```
 
+```bash
 curl -X POST http://192.168.86.179:30181/v1/embeddings \
   -H "Content-Type: application/json" \
   -H "X-Request-Id: request_id_1" \
