@@ -12,9 +12,11 @@ Implementation references:
 
 ## `POST /v1/embeddings`
 
-### Required request headers
+### Correlation headers (optional)
 
-All three must be present or the gateway returns **400**:
+`X-Request-Id`, `X-Trace-Id`, and `X-Session-Id` are **optional** on `POST /v1/embeddings`. The handler resolves each value from the incoming request (header names are case-insensitive). **Missing** or **whitespace-only** values are replaced with a **new UUID** (via `new_request_id()` in `app/core/logging.py`) before logging and before the upstream `httpx` call.
+
+An **empty** `X-Request-Id` (after trimming) is treated like a missing header: a new UUID is generated. The **same** empty-as-missing rule applies to `X-Trace-Id` and `X-Session-Id` on this route.
 
 | Header | Purpose |
 |--------|---------|
@@ -22,7 +24,7 @@ All three must be present or the gateway returns **400**:
 | `X-Trace-Id` | Trace id (logged and forwarded) |
 | `X-Session-Id` | Session id (logged and forwarded) |
 
-Header names are read case-insensitively from the ASGI request.
+**JSON logs:** `JsonLogFormatter` writes `request_id`, `trace_id`, and `session_id` as **`"-"`** when the log record **omits** that field **or** the value is an **empty string** (see `_format_gateway` in `app/core/logging.py`). Empty `x-trace-id` / `x-session-id` values still yield **`"-"`** in JSON logs when they reach the formatter as blank strings (the same rule applies to `request_id`). Events that omit correlation kwargs show `"-"`; the `/v1/embeddings` handler normally passes resolved non-empty UUIDs for all three.
 
 ### Request body (JSON)
 
@@ -61,7 +63,6 @@ So clients may receive **2xx**, **4xx**, or **5xx** bodies **from the backend** 
 
 | Status | When | Body (typical) |
 |--------|------|----------------|
-| **400** | Missing any of the three required headers | FastAPI `detail` JSON |
 | **429** | Admission queue wait exceeded `ADMISSION_WAIT_TIMEOUT_MS` | `{"error":"Gateway busy, try again"}` |
 | **503** | No backend to route to after exclusions / breaker | `{"detail":"No healthy backend available"}` (FastAPI) |
 | **503** | All retry attempts failed with transport errors | `{"error":"Backends unavailable"}` |
@@ -92,9 +93,9 @@ When JSON logging is enabled, `JsonLogFormatter` emits **one JSON object per lin
 | `event` | string | Logical event name (see table below) |
 | `service` | string | Always `gateway` for `log_gateway_event` |
 | `env` | string | `GATEWAY_ENV` or `ENV`, default `dev` |
-| `trace_id` | string or `"-"` | From `X-Trace-Id` |
-| `request_id` | string or `"-"` | From `X-Request-Id` |
-| `session_id` | string or `"-"` | From `X-Session-Id` |
+| `trace_id` | string or `"-"` | Resolved `X-Trace-Id` when set on the record; `"-"` if omitted or empty string on the record |
+| `request_id` | string or `"-"` | Resolved `X-Request-Id` when set on the record; `"-"` if omitted or empty string on the record |
+| `session_id` | string or `"-"` | Resolved `X-Session-Id` when set on the record; `"-"` if omitted or empty string on the record |
 | `path` | string or `"-"` | Gateway route path (e.g. `/v1/embeddings`) |
 | `backend` | string or `"-"` | Upstream backend **name** when relevant |
 | `latency_ms` | number (optional) | **Upstream-only** duration: from start of `httpx.post` to completion (excludes admission wait and JSON parse before the post) |

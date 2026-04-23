@@ -2,15 +2,12 @@
 
 ## Purpose
 
-`layer-gateway-embed-v1` is a standalone gateway for embedding traffic only. It exposes `POST /v1/embeddings`, validates required request context headers, routes requests to the best backend, and adds reliability/observability controls at request level.
+`layer-gateway-embed-v1` is a standalone gateway for embedding traffic only. It exposes `POST /v1/embeddings`, resolves optional correlation headers (missing or blank values get UUIDs), routes requests to the best backend, and adds reliability/observability controls at request level.
 
 ## Request Flow
 
-1. Client sends `POST /v1/embeddings` with:
-   - `X-Request-Id`
-   - `X-Trace-Id`
-   - `X-Session-Id`
-2. Gateway validates headers and parses payload.
+1. Client sends `POST /v1/embeddings` (optionally with `X-Request-Id`, `X-Trace-Id`, `X-Session-Id`; missing or empty values are filled with UUIDs).
+2. Gateway resolves correlation ids and parses payload.
 3. Routing selector scores available backends and picks the lowest score.
 4. Gateway forwards the request to the selected backend.
 5. Gateway returns backend response transparently.

@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
 from app.core.config import Settings
-from app.core.logging import log_gateway_event
+from app.core.logging import log_gateway_event, new_request_id
 from app.metrics.prometheus import (
     ADMISSION_INQUEUE,
     ADMISSION_REJECTED,
@@ -30,6 +30,7 @@ from app.routing.selector import BackendSelector
 logger = logging.getLogger(__name__)
 router = APIRouter()
 _BLOCKED_HEADERS = frozenset({"host", "content-length"})
+_CORRELATION_KEYS_LOWER = frozenset({"x-request-id", "x-trace-id", "x-session-id"})
 _EMBEDDINGS_PATH = "/v1/embeddings"
 
 
@@ -83,14 +84,34 @@ def _safe_headers(req: Request) -> dict[str, str]:
     return {k: v for k, v in req.headers.items() if k.lower() not in _BLOCKED_HEADERS}
 
 
-def _validate_headers(request: Request) -> tuple[str, str, str]:
-    """Require `X-Request-Id`, `X-Trace-Id`, and `X-Session-Id` (400 if missing)."""
-    request_id = request.headers.get("x-request-id")
-    trace_id = request.headers.get("x-trace-id")
-    session_id = request.headers.get("x-session-id")
-    if not request_id or not trace_id or not session_id:
-        raise HTTPException(status_code=400, detail="Missing X-Request-Id, X-Trace-Id, or X-Session-Id")
-    return request_id, trace_id, session_id
+def _resolve_correlation_ids(request: Request) -> tuple[str, str, str]:
+    """
+    Return `X-Request-Id`, `X-Trace-Id`, and `X-Session-Id` for logs and upstream.
+
+    Missing or blank (after strip) values are replaced with a new UUID via `new_request_id`.
+    """
+    def one(header_key_lower: str) -> str:
+        raw = request.headers.get(header_key_lower)
+        if raw is None:
+            return new_request_id()
+        stripped = raw.strip()
+        return stripped if stripped else new_request_id()
+
+    return (one("x-request-id"), one("x-trace-id"), one("x-session-id"))
+
+
+def _outbound_headers(
+    safe_headers: dict[str, str],
+    request_id: str,
+    trace_id: str,
+    session_id: str,
+) -> dict[str, str]:
+    """Client headers minus hop-by-hop, with canonical correlation headers set to resolved values."""
+    out = {k: v for k, v in safe_headers.items() if k.lower() not in _CORRELATION_KEYS_LOWER}
+    out["X-Request-Id"] = request_id
+    out["X-Trace-Id"] = trace_id
+    out["X-Session-Id"] = session_id
+    return out
 
 
 @router.post("/v1/embeddings")
@@ -98,12 +119,16 @@ async def embeddings(request: Request) -> Response:
     """
     Proxy an embedding request to a selected backend.
 
+    `X-Request-Id`, `X-Trace-Id`, and `X-Session-Id` are optional; blank or missing values are
+    filled with UUIDs for logging and upstream forwarding.
+
     Flow: admission → parse JSON → retry loop (pick backend → POST upstream → metrics/logs).
     Retries exclude failed backends; `5xx` counts as selector failure for the breaker.
     """
     context: GatewayContext = request.app.state.gateway_context
-    request_id, trace_id, session_id = _validate_headers(request)
+    request_id, trace_id, session_id = _resolve_correlation_ids(request)
     safe_headers = _safe_headers(request)
+    out_headers = _outbound_headers(safe_headers, request_id, trace_id, session_id)
     retryable_statuses = context.settings.retry.retryable_statuses
     queue_wait_start = time.perf_counter()
     ADMISSION_INQUEUE.inc()
@@ -205,7 +230,7 @@ async def embeddings(request: Request) -> Response:
                 upstream = await context.client.post(
                     f"{backend.url}{_EMBEDDINGS_PATH}",
                     json=payload,
-                    headers=safe_headers,
+                    headers=out_headers,
                 )
                 latency_ms = (time.perf_counter() - start) * 1000
                 success = upstream.status_code < 500

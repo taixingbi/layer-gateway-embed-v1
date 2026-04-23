@@ -8,11 +8,13 @@ Request-level routing gateway for `/v1/embeddings` across multiple vLLM backends
 - `GET /health`
 - `GET /metrics`
 
-## Required Headers
+## Correlation headers (recommended)
 
 - `X-Request-Id`
 - `X-Trace-Id`
 - `X-Session-Id`
+
+Omitted or blank values are auto-filled with UUIDs for logging and upstream forwarding. JSON logs show `"-"` for `request_id` / `trace_id` / `session_id` when a log line omits them or passes an empty string (see `docs/request-response-and-logging.md`).
 
 ## Configuration
 
