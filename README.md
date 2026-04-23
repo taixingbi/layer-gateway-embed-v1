@@ -61,19 +61,15 @@ pip install .
 python -m app.main
 ```
 
-## test after deploy in k3s
+## Test after deploy (k3s)
 
-```bash
-curl http://192.168.86.179:30181/health
-```
+OpenAPI / Swagger UI: [http://192.168.86.179:30181/docs](http://192.168.86.179:30181/docs)
 
 ```bash
 curl -X POST http://192.168.86.179:30181/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{"model":"BAAI/bge-m3","input":"hello world"}'
-```
 
-```bash
 curl -X POST http://192.168.86.179:30181/v1/embeddings \
   -H "Content-Type: application/json" \
   -H "X-Request-Id: request_id_1" \
