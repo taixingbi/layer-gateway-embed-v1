@@ -6,12 +6,18 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
 from app.core.config import Settings
+from app.core.conversation import (
+    merge_conversation_into_response_json,
+    resolve_conversation_id,
+    strip_conversation_fields,
+)
 from app.core.logging import log_gateway_event, new_request_id
 from app.metrics.prometheus import (
     ADMISSION_INQUEUE,
@@ -30,7 +36,9 @@ from app.routing.selector import BackendSelector
 logger = logging.getLogger(__name__)
 router = APIRouter()
 _BLOCKED_HEADERS = frozenset({"host", "content-length"})
-_CORRELATION_KEYS_LOWER = frozenset({"x-request-id", "x-trace-id", "x-session-id"})
+_GATEWAY_OWNED_HEADERS_LOWER = frozenset(
+    {"x-request-id", "x-trace-id", "x-session-id", "x-conversation-id", "x-is-new-conversation"}
+)
 _EMBEDDINGS_PATH = "/v1/embeddings"
 
 
@@ -105,13 +113,31 @@ def _outbound_headers(
     request_id: str,
     trace_id: str,
     session_id: str,
+    conversation_id: str,
+    is_new_conversation: bool,
 ) -> dict[str, str]:
-    """Client headers minus hop-by-hop, with canonical correlation headers set to resolved values."""
-    out = {k: v for k, v in safe_headers.items() if k.lower() not in _CORRELATION_KEYS_LOWER}
+    """Client headers minus hop-by-hop, with gateway-owned ``x-*`` ids set to resolved values."""
+    out = {k: v for k, v in safe_headers.items() if k.lower() not in _GATEWAY_OWNED_HEADERS_LOWER}
     out["X-Request-Id"] = request_id
     out["X-Trace-Id"] = trace_id
     out["X-Session-Id"] = session_id
+    out["x-conversation-id"] = conversation_id
+    out["x-is-new-conversation"] = "true" if is_new_conversation else "false"
     return out
+
+
+def _embedding_response_headers(
+    upstream: httpx.Response, *, conversation_id: str, is_new_conversation: bool
+) -> dict[str, str]:
+    """Client response headers: preserve upstream ``content-type`` and surface thread ids."""
+    h: dict[str, str] = {
+        "x-conversation-id": conversation_id,
+        "x-is-new-conversation": "true" if is_new_conversation else "false",
+    }
+    ct = upstream.headers.get("content-type")
+    if ct:
+        h["content-type"] = ct
+    return h
 
 
 @router.post("/v1/embeddings")
@@ -122,13 +148,17 @@ async def embeddings(request: Request) -> Response:
     `X-Request-Id`, `X-Trace-Id`, and `X-Session-Id` are optional; blank or missing values are
     filled with UUIDs for logging and upstream forwarding.
 
+    Optional JSON body field ``conversation_id`` selects a thread id; blank or missing values
+    yield a generated ``conv_`` + 32 hex id. ``conversation_id`` and client ``is_new_conversation``
+    are stripped before the upstream POST. Upstream requests include ``x-conversation-id`` and
+    ``x-is-new-conversation``; successful JSON object responses merge those fields into the body.
+
     Flow: admission → parse JSON → retry loop (pick backend → POST upstream → metrics/logs).
     Retries exclude failed backends; `5xx` counts as selector failure for the breaker.
     """
     context: GatewayContext = request.app.state.gateway_context
     request_id, trace_id, session_id = _resolve_correlation_ids(request)
     safe_headers = _safe_headers(request)
-    out_headers = _outbound_headers(safe_headers, request_id, trace_id, session_id)
     retryable_statuses = context.settings.retry.retryable_statuses
     queue_wait_start = time.perf_counter()
     ADMISSION_INQUEUE.inc()
@@ -159,30 +189,51 @@ async def embeddings(request: Request) -> Response:
 
     queue_wait_ms = (time.perf_counter() - queue_wait_start) * 1000
     ADMISSION_WAIT.observe(queue_wait_ms)
-    payload = await request.json()
-    parsed = EmbeddingRequest.model_validate(payload)
-    req_class = parsed.classify().value
-
-    log_gateway_event(
-        logger,
-        logging.INFO,
-        "gateway_started",
-        request_id=request_id,
-        trace_id=trace_id,
-        session_id=session_id,
-        path=_EMBEDDINGS_PATH,
-        queue_wait_ms=queue_wait_ms,
-        gateway_meta={
-            "backends_count": len(context.settings.backends),
-            "admission_max_concurrent": context.settings.admission_queue.max_concurrent,
-            "admission_wait_timeout_ms": context.settings.admission_queue.wait_timeout_ms,
-            "model": parsed.model,
-            "request_class": req_class,
-            "client_host": getattr(request.client, "host", None),
-        },
-    )
-
     try:
+        payload_any: Any = await request.json()
+        if not isinstance(payload_any, dict):
+            log_gateway_event(
+                logger,
+                logging.WARNING,
+                "embeddings_invalid_json_root",
+                request_id=request_id,
+                trace_id=trace_id,
+                session_id=session_id,
+                path=_EMBEDDINGS_PATH,
+                queue_wait_ms=queue_wait_ms,
+                error={"kind": "InvalidJsonRoot", "detail": "JSON body must be an object"},
+            )
+            return JSONResponse(status_code=400, content={"error": "JSON body must be an object"})
+        payload: dict[str, Any] = payload_any
+        conversation_id, is_new_conversation = resolve_conversation_id(payload)
+        upstream_payload = strip_conversation_fields(payload)
+        parsed = EmbeddingRequest.model_validate(upstream_payload)
+        req_class = parsed.classify().value
+        out_headers = _outbound_headers(
+            safe_headers, request_id, trace_id, session_id, conversation_id, is_new_conversation
+        )
+
+        log_gateway_event(
+            logger,
+            logging.INFO,
+            "gateway_started",
+            request_id=request_id,
+            trace_id=trace_id,
+            session_id=session_id,
+            conversation_id=conversation_id,
+            is_new_conversation=is_new_conversation,
+            path=_EMBEDDINGS_PATH,
+            queue_wait_ms=queue_wait_ms,
+            gateway_meta={
+                "backends_count": len(context.settings.backends),
+                "admission_max_concurrent": context.settings.admission_queue.max_concurrent,
+                "admission_wait_timeout_ms": context.settings.admission_queue.wait_timeout_ms,
+                "model": parsed.model,
+                "request_class": req_class,
+                "client_host": getattr(request.client, "host", None),
+            },
+        )
+
         excluded: set[str] = set()
         last_exc: Exception | None = None
 
@@ -197,6 +248,8 @@ async def embeddings(request: Request) -> Response:
                     request_id=request_id,
                     trace_id=trace_id,
                     session_id=session_id,
+                    conversation_id=conversation_id,
+                    is_new_conversation=is_new_conversation,
                     path=_EMBEDDINGS_PATH,
                     queue_wait_ms=queue_wait_ms,
                     gateway_meta={"attempt": attempt, "excluded": sorted(excluded), **_routing_debug(context.selector, excluded)},
@@ -210,6 +263,8 @@ async def embeddings(request: Request) -> Response:
                 request_id=request_id,
                 trace_id=trace_id,
                 session_id=session_id,
+                conversation_id=conversation_id,
+                is_new_conversation=is_new_conversation,
                 path=_EMBEDDINGS_PATH,
                 backend=backend.name,
                 queue_wait_ms=queue_wait_ms,
@@ -229,7 +284,7 @@ async def embeddings(request: Request) -> Response:
             try:
                 upstream = await context.client.post(
                     f"{backend.url}{_EMBEDDINGS_PATH}",
-                    json=payload,
+                    json=upstream_payload,
                     headers=out_headers,
                 )
                 latency_ms = (time.perf_counter() - start) * 1000
@@ -247,6 +302,8 @@ async def embeddings(request: Request) -> Response:
                         request_id=request_id,
                         trace_id=trace_id,
                         session_id=session_id,
+                        conversation_id=conversation_id,
+                        is_new_conversation=is_new_conversation,
                         path=_EMBEDDINGS_PATH,
                         backend=backend.name,
                         latency_ms=latency_ms,
@@ -265,6 +322,8 @@ async def embeddings(request: Request) -> Response:
                     request_id=request_id,
                     trace_id=trace_id,
                     session_id=session_id,
+                    conversation_id=conversation_id,
+                    is_new_conversation=is_new_conversation,
                     path=_EMBEDDINGS_PATH,
                     backend=backend.name,
                     latency_ms=latency_ms,
@@ -276,10 +335,23 @@ async def embeddings(request: Request) -> Response:
                         "attempt": attempt,
                     },
                 )
+                body_out = upstream.content
+                if upstream.status_code < 400:
+                    merged = merge_conversation_into_response_json(
+                        upstream.content,
+                        conversation_id=conversation_id,
+                        is_new_conversation=is_new_conversation,
+                    )
+                    if merged is not None:
+                        body_out = merged
                 return Response(
-                    content=upstream.content,
+                    content=body_out,
                     status_code=upstream.status_code,
-                    media_type=upstream.headers.get("content-type"),
+                    headers=_embedding_response_headers(
+                        upstream,
+                        conversation_id=conversation_id,
+                        is_new_conversation=is_new_conversation,
+                    ),
                 )
             except (httpx.TimeoutException, httpx.HTTPError) as exc:
                 latency_ms = (time.perf_counter() - start) * 1000
@@ -297,6 +369,8 @@ async def embeddings(request: Request) -> Response:
                         request_id=request_id,
                         trace_id=trace_id,
                         session_id=session_id,
+                        conversation_id=conversation_id,
+                        is_new_conversation=is_new_conversation,
                         path=_EMBEDDINGS_PATH,
                         backend=backend.name,
                         latency_ms=latency_ms,
@@ -314,6 +388,8 @@ async def embeddings(request: Request) -> Response:
             request_id=request_id,
             trace_id=trace_id,
             session_id=session_id,
+            conversation_id=conversation_id,
+            is_new_conversation=is_new_conversation,
             path=_EMBEDDINGS_PATH,
             queue_wait_ms=queue_wait_ms,
             error={"kind": type(last_exc).__name__ if last_exc else "unknown"},

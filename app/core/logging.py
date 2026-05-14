@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 _JSON_CONTEXT_KEYS = ("request_id", "session_id", "method", "path", "status")
 _JSON_FIXED_KEYS = frozenset({"ts", "level", "logger", *_JSON_CONTEXT_KEYS, "message", "error"})
-_GATEWAY_OPTIONAL_STRINGS = ("trace_id", "request_id", "session_id", "path", "backend")
+_GATEWAY_OPTIONAL_STRINGS = ("trace_id", "request_id", "session_id", "path", "backend", "conversation_id")
 
 
 def _load_log_timezone(name: str) -> ZoneInfo:
@@ -41,6 +41,8 @@ def log_gateway_event(
     request_id: str | None = None,
     trace_id: str | None = None,
     session_id: str | None = None,
+    conversation_id: str | None = None,
+    is_new_conversation: bool | None = None,
     path: str | None = None,
     backend: str | None = None,
     latency_ms: float | None = None,
@@ -57,6 +59,10 @@ def log_gateway_event(
         extra["trace_id"] = trace_id
     if session_id is not None:
         extra["session_id"] = session_id
+    if conversation_id is not None:
+        extra["conversation_id"] = conversation_id
+    if is_new_conversation is not None:
+        extra["is_new_conversation"] = is_new_conversation
     if path is not None:
         extra["path"] = path
     if backend is not None:
@@ -117,6 +123,8 @@ class JsonLogFormatter(logging.Formatter):
             payload["error"] = err
         if getattr(record, "gateway_meta", None) is not None:
             payload["gateway_meta"] = record.gateway_meta
+        if getattr(record, "is_new_conversation", None) is not None:
+            payload["is_new_conversation"] = record.is_new_conversation
         for key in self._extras:
             if key in payload or key in {"ts", "level", "event", "service", "env", "error"}:
                 continue

@@ -60,7 +60,62 @@ def test_partial_correlation_headers_filled():
         assert sent["X-Session-Id"]
 
 
-def test_admission_queue_timeout_rejects_request():
+def test_conversation_id_generated_and_merged_into_ok_json():
+    get_settings.cache_clear()
+    with TestClient(app) as client:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.content = b'{"object":"list","data":[]}'
+        mock_resp.headers = {"content-type": "application/json"}
+        client.app.state.gateway_context.client.post = AsyncMock(return_value=mock_resp)
+        response = client.post("/v1/embeddings", json={"model": "m", "input": "hi"})
+        assert response.status_code == 200
+        post = client.app.state.gateway_context.client.post
+        sent = post.call_args.kwargs["json"]
+        assert "conversation_id" not in sent
+        assert "is_new_conversation" not in sent
+        hdr = post.call_args.kwargs["headers"]
+        assert hdr["x-is-new-conversation"] == "true"
+        assert hdr["x-conversation-id"].startswith("conv_")
+        assert response.headers["x-is-new-conversation"] == "true"
+        body = response.json()
+        assert body["conversation_id"] == hdr["x-conversation-id"]
+        assert body["is_new_conversation"] is True
+
+
+def test_conversation_id_client_value_strip_and_not_new():
+    get_settings.cache_clear()
+    with TestClient(app) as client:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.content = b'{"object":"list","data":[]}'
+        mock_resp.headers = {"content-type": "application/json"}
+        client.app.state.gateway_context.client.post = AsyncMock(return_value=mock_resp)
+        response = client.post(
+            "/v1/embeddings",
+            json={
+                "model": "m",
+                "input": "hi",
+                "conversation_id": "  thread-1  ",
+                "is_new_conversation": True,
+            },
+        )
+        assert response.status_code == 200
+        sent = client.app.state.gateway_context.client.post.call_args.kwargs["json"]
+        assert sent == {"model": "m", "input": "hi"}
+        hdr = client.app.state.gateway_context.client.post.call_args.kwargs["headers"]
+        assert hdr["x-conversation-id"] == "thread-1"
+        assert hdr["x-is-new-conversation"] == "false"
+        assert response.json()["conversation_id"] == "thread-1"
+        assert response.json()["is_new_conversation"] is False
+
+
+def test_embeddings_rejects_non_object_json_body():
+    get_settings.cache_clear()
+    with TestClient(app) as client:
+        response = client.post("/v1/embeddings", json=["not", "an", "object"])
+    assert response.status_code == 400
+
     os.environ["ADMISSION_WAIT_TIMEOUT_MS"] = "1"
     get_settings.cache_clear()
     with TestClient(app) as client:
