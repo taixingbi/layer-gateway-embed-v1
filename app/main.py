@@ -11,6 +11,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from app.api.embeddings import GatewayContext, router as embed_router
+from app.build_info import version_payload
 from app.core.config import get_settings
 from app.core.logging import build_logging_config, log_gateway_event
 from app.health.backends import probe_backends, ready_payload
@@ -52,6 +53,12 @@ app.include_router(embed_router)
 def health() -> dict[str, str]:
     """Kubernetes-style liveness payload."""
     return {"status": "ok"}
+
+
+@app.get("/version")
+def version() -> dict[str, str]:
+    """Service identity and build metadata (APP_VERSION, GIT_*, BUILD_*, ENVIRONMENT)."""
+    return version_payload()
 
 
 @app.get("/ready")

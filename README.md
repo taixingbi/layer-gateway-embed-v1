@@ -7,6 +7,7 @@ Request-level routing gateway for `/v1/embeddings` across multiple vLLM backends
 - `POST /v1/embeddings`
 - `GET /health`
 - `GET /ready`
+- `GET /version`
 - `GET /metrics`
 
 ## Correlation headers (recommended)
@@ -66,6 +67,7 @@ python -m app.main
 
 ```bash
 curl -sS http://127.0.0.1:30181/ready | jq .
+curl -sS http://127.0.0.1:30181/version | jq .
 ```
 
 ## Test after deploy (k3s)
