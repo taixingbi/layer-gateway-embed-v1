@@ -139,6 +139,7 @@ When JSON logging is enabled, `JsonLogFormatter` emits **one JSON object per lin
 | Endpoint | Response |
 |----------|----------|
 | `GET /health` | `{"status":"ok"}` |
+| `GET /ready` | Probes each backend `GET {url}/health`; `200` when all healthy, else `503` with `healthy_backends`, `total_backends`, `backends` map |
 | `GET /metrics` | Prometheus text exposition |
 
 ---

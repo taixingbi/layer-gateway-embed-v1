@@ -6,6 +6,7 @@ Request-level routing gateway for `/v1/embeddings` across multiple vLLM backends
 
 - `POST /v1/embeddings`
 - `GET /health`
+- `GET /ready`
 - `GET /metrics`
 
 ## Correlation headers (recommended)
@@ -59,6 +60,12 @@ Set values via environment variables (see `.env.example`):
 ```bash
 pip install .
 python -m app.main
+```
+
+`/ready` probes each `EMBED_BACKENDS` upstream `GET /health` (HTTP `503` if any backend is unhealthy).
+
+```bash
+curl -sS http://127.0.0.1:30181/ready | jq .
 ```
 
 ## Test after deploy (k3s)

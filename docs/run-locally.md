@@ -60,6 +60,7 @@ python -m app.main
 
 ```bash
 curl http://localhost:30181/health
+curl -sS http://localhost:30181/ready | jq .
 curl http://localhost:30181/metrics
 ```
 
