@@ -2,7 +2,7 @@
 
 This guide covers:
 - Running the gateway locally with Docker
-- Publishing the image to Docker Hub
+- Publishing the image to GHCR
 
 ## Prerequisites
 
@@ -72,40 +72,39 @@ curl -X POST http://localhost:30181/v1/embeddings \
   -d '{"model":"BAAI/bge-m3","input":"hello world"}'
 ```
 
-## 4) Publish to Docker Hub
+## 4) Publish to GHCR
 
-Set your Docker Hub namespace and target tag:
+Set your GHCR namespace and target tag:
 
 ```bash
-export DOCKERHUB_USER=<your-dockerhub-username>
-export IMAGE_NAME=layer-gateway-embed-v1
+export IMAGE=ghcr.io/taixingbi/layer-gateway-embed-v1
 export IMAGE_TAG=v1.0.0
 ```
 
 Build and tag:
 
 ```bash
-docker build -t ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG} .
-docker tag ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG} ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
+docker build -t ${IMAGE}:${IMAGE_TAG} .
+docker tag ${IMAGE}:${IMAGE_TAG} ${IMAGE}:latest
 ```
 
 Login and push:
 
 ```bash
-docker login
-docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}
-docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
+echo "$GITHUB_TOKEN" | docker login ghcr.io -u USERNAME --password-stdin
+docker push ${IMAGE}:${IMAGE_TAG}
+docker push ${IMAGE}:latest
 ```
 
-## 5) Pull and Run from Docker Hub
+## 5) Pull and Run from GHCR
 
 ```bash
-docker pull ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
+docker pull ${IMAGE}:latest
 docker run --rm \
   --name layer-gateway-embed-v1 \
   --env-file .env \
   -p 30181:30181 \
-  ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
+  ${IMAGE}:latest
 ```
 
 ## Troubleshooting
