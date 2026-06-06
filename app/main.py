@@ -28,7 +28,10 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     selector = BackendSelector(settings.backends, settings.routing, settings.circuit_breaker)
     timeout = get_timeout(settings.timeouts.connect_ms, settings.timeouts.read_ms)
-    client = httpx.AsyncClient(timeout=timeout)
+    client = httpx.AsyncClient(
+        timeout=timeout,
+        limits=httpx.Limits(max_connections=1000, max_keepalive_connections=200),
+    )
     queue = asyncio.Semaphore(settings.admission_queue.max_concurrent)
     app.state.gateway_context = GatewayContext(settings=settings, selector=selector, client=client, queue=queue)
     log_gateway_event(

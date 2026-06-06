@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Dict
 
@@ -14,6 +15,8 @@ from app.core.config import BackendConfig, CircuitBreakerConfig, RoutingConfig
 class BackendState:
     """Per-backend counters for routing score and circuit breaker."""
 
+    soft_limit: int
+    hard_limit: int
     inflight: int = 0
     latency_ms: float = 0.0
     errors: int = 0
@@ -24,6 +27,7 @@ class BackendState:
     half_open_inflight: int = 0
     half_open_successes: int = 0
     last_selected_at: float = field(default_factory=time.time)
+    _dispatch_times: deque[float] = field(default_factory=lambda: deque(maxlen=256))
 
     def error_rate(self) -> float:
         """Errors divided by completed attempts (includes successes and failures)."""
@@ -34,6 +38,40 @@ class BackendState:
     def circuit_open(self) -> bool:
         """True during cool-down after failures (blocks normal picks until half-open)."""
         return time.time() < self.circuit_open_until
+
+    def record_dispatch(self) -> None:
+        """Timestamp this dispatch for hot-share scoring."""
+        self._dispatch_times.append(time.monotonic())
+
+    def dispatch_share(self, window_sec: float) -> tuple[int, float]:
+        """Count dispatches in the last ``window_sec`` seconds; returns (count, now)."""
+        now = time.monotonic()
+        cutoff = now - window_sec
+        count = sum(1 for t in self._dispatch_times if t >= cutoff)
+        return count, now
+
+
+def _hot_penalty(
+    state: BackendState,
+    total_dispatches: int,
+    routing: RoutingConfig,
+) -> float:
+    """Penalize backends that take too large a share of recent dispatches (anti hotspot)."""
+    if total_dispatches <= 0:
+        return 0.0
+    share = state.dispatch_share(routing.hot_window_sec)[0] / total_dispatches
+    if share <= routing.hot_target_share:
+        return 0.0
+    excess = share - routing.hot_target_share
+    return routing.hot_penalty_weight * (excess**2) * 100
+
+
+def _overload_penalty(state: BackendState, routing: RoutingConfig) -> float:
+    """Soft penalty once inflight exceeds soft_limit (steer before hard_limit)."""
+    if state.inflight <= state.soft_limit:
+        return 0.0
+    over = state.inflight - state.soft_limit
+    return routing.overload_penalty_weight * float(over)
 
 
 class BackendSelector:
@@ -50,7 +88,9 @@ class BackendSelector:
         self.routing = routing
         self.circuit_breaker = circuit_breaker
         self.rng = rng or random.Random()
-        self.state: Dict[str, BackendState] = {b.name: BackendState() for b in backends}
+        self.state: Dict[str, BackendState] = {
+            b.name: BackendState(soft_limit=b.soft_limit, hard_limit=b.hard_limit) for b in backends
+        }
         self.last_pick_reason = "score"
 
     def _open_circuit(self, s: BackendState) -> None:
@@ -67,13 +107,21 @@ class BackendSelector:
         s.half_open_inflight = 0
         s.half_open_successes = 0
 
-    def _score(self, backend_name: str) -> float:
-        """Routing score (lower is better): inflight + success EWMA latency + error rate."""
+    def _total_dispatches_window(self) -> int:
+        total = 0
+        for backend in self.backends:
+            total += self.state[backend.name].dispatch_share(self.routing.hot_window_sec)[0]
+        return total
+
+    def _score(self, backend_name: str, total_dispatches: int) -> float:
+        """Routing score (lower is better): load, latency, errors, hot-spot, overload."""
         state = self.state[backend_name]
         return (
             (state.inflight * self.routing.inflight_weight)
             + (state.latency_ms * self.routing.latency_weight)
             + (state.error_rate() * self.routing.error_weight)
+            + _hot_penalty(state, total_dispatches, self.routing)
+            + _overload_penalty(state, self.routing)
         )
 
     def _eligible_backends(self, excluded_names: set[str]) -> list[BackendConfig]:
@@ -82,20 +130,20 @@ class BackendSelector:
 
         Eligibility rules:
         - Exclude backends in `excluded_names`
+        - Skip drained backends
+        - Skip backends at or above hard_limit inflight
         - Skip backends with an OPEN circuit
         - Transition OPEN → HALF_OPEN after cooldown expires
         - In HALF_OPEN, allow only limited probe requests
-
-        Behavior notes:
-        - This function mutates backend state (OPEN → HALF_OPEN transition)
-        - HALF_OPEN backends are rate-limited to avoid overload during recovery
         """
         eligible: list[BackendConfig] = []
         now = time.time()
         for backend in self.backends:
-            if backend.name in excluded_names:
+            if backend.name in excluded_names or backend.drained:
                 continue
             state = self.state[backend.name]
+            if state.inflight >= state.hard_limit:
+                continue
             if state.circuit_open():
                 continue
             if state.circuit_open_until > 0 and not state.circuit_half_open and now >= state.circuit_open_until:
@@ -118,8 +166,12 @@ class BackendSelector:
         return max(stale, key=lambda b: now - self.state[b.name].last_selected_at)
 
     def _pick_best_score(self, eligible: list[BackendConfig]) -> BackendConfig:
-        """Pick the eligible backend with the lowest `_score`."""
-        return min(eligible, key=lambda backend: self._score(backend.name))
+        """Pick the eligible backend with the lowest score; random tie-break among equals."""
+        total_dispatches = self._total_dispatches_window()
+        scored = [(self._score(backend.name, total_dispatches), backend) for backend in eligible]
+        min_score = min(score for score, _ in scored)
+        tied = [backend for score, backend in scored if score == min_score]
+        return self.rng.choice(tied)
 
     def _pick_exploration(self, eligible: list[BackendConfig]) -> BackendConfig:
         """Random eligible backend (exploration traffic for fresh latency samples)."""
@@ -130,9 +182,9 @@ class BackendSelector:
         Pick a backend for the next upstream call.
 
         Priority:
-        1. Idle rebalance (anti-starvation)
-        2. Exploration sample (random eligible backend)
-        3. Lowest routing score
+        1. Idle rebalance (anti-starvation, optional)
+        2. Exploration sample (random eligible backend, optional)
+        3. Lowest routing score with hot-spot and overload penalties
 
         `excluded` skips backends (retries add failed backends here).
         Sets `last_pick_reason` for `routing_pick` logs.
@@ -147,17 +199,20 @@ class BackendSelector:
         idle_pick = self._pick_idle_backend(eligible, now)
         if idle_pick is not None:
             self.state[idle_pick.name].last_selected_at = now
+            self.state[idle_pick.name].record_dispatch()
             self.last_pick_reason = "idle_rebalance"
             return idle_pick
 
         if len(eligible) > 1 and self.routing.exploration_rate > 0 and self.rng.random() < self.routing.exploration_rate:
             backend = self._pick_exploration(eligible)
             self.state[backend.name].last_selected_at = now
+            self.state[backend.name].record_dispatch()
             self.last_pick_reason = "exploration"
             return backend
 
         backend = self._pick_best_score(eligible)
         self.state[backend.name].last_selected_at = now
+        self.state[backend.name].record_dispatch()
         self.last_pick_reason = "score"
         return backend
 

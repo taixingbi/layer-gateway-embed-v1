@@ -15,20 +15,24 @@
 
 ## Routing Model
 
-Backends are scored using:
+Backends are scored using (same model as inference gateway):
 
-`score = inflight * W1 + latency * W2 + error_rate * W3`
+`score = inflight * W1 + latency * W2 + error_rate * W3 + hot_penalty + overload_penalty`
 
 Where:
 - `inflight`: current active requests
 - `latency`: rolling latency signal
 - `error_rate`: rolling failure signal
+- `hot_penalty`: penalizes backends taking too large a share of recent dispatches (anti hotspot)
+- `overload_penalty`: soft penalty when inflight exceeds per-backend `soft_limit`
 
-Lower score is preferred.
+Lower score is preferred. Backends at or above `hard_limit` inflight are excluded from selection.
 
-To avoid starvation while preserving latency preference, routing also uses two hybrid controls:
-- `ROUTING_EXPLORATION_RATE`: small probability to choose a random healthy backend for fresh samples.
-- `ROUTING_MAX_IDLE_MS`: if a healthy backend has not been selected recently, it is preferred to rebalance traffic.
+Tie-break among equal scores uses random choice to avoid first-backend bias.
+
+Optional legacy controls (disabled in production config):
+- `ROUTING_EXPLORATION_RATE`: random healthy backend for fresh samples
+- `ROUTING_MAX_IDLE_MS`: prefer longest-idle backend to rebalance traffic
 
 ## Reliability Controls
 
@@ -63,14 +67,18 @@ To avoid starvation while preserving latency preference, routing also uses two h
 
 ## Configuration Surface
 
-Runtime behavior is environment-driven through:
+Runtime behavior is loaded from:
+- **`GATEWAY_CONFIG`** YAML file (production / k8s; mirrors inference gateway ConfigMap pattern)
+- **Environment variables** when `GATEWAY_CONFIG` is unset (local dev)
+
+Key settings:
 - server host/port
 - timeout values
 - retry policy
 - circuit breaker thresholds
-- half-open circuit breaker probe controls
-- routing weights
-- routing exploration and idle rebalance knobs
+- per-backend `soft_limit` / `hard_limit`
+- routing weights and hot-spot / overload penalties
+- admission semaphore limits
 - backend list
 - logging options
 
